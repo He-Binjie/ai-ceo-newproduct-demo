@@ -1,32 +1,109 @@
-# React + TypeScript + Vite
+# AI CEO · 新品分仓备货 Demo
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+> 霸王茶姬供应链 AI 决策助手 — 新品从录入到备货方案输出的全流程向导
 
-Currently, two official plugins are available:
+## 🚀 快速开始
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev
+# → http://localhost:3003
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+## ✨ 核心特性
+
+### 自然语言驱动交互
+- 用户通过对话输入指令，AI 解析意图后执行操作
+- 支持 20+ 种意图：创建产品、设置参数、选物料、调系数、计算、确认、导出等
+- 每条回复展示**思维链**（意图识别 → 实体提取 → 置信度 → 执行）
+- 快捷指令按钮降低使用门槛
+
+### 8步向导流程
+| Step | 内容 | 交互方式 |
+|------|------|---------|
+| 1 | 新品信息录入 | 表单 + 自然语言 |
+| 2 | 核心物料筛选 | 勾选 + "选择全部"/"去掉XX" |
+| 3 | 区域系数计算 | 相似产品推荐 + 系数调整 |
+| 4 | 门店级杯量预测 | "开始预测" 触发计算 |
+| 5 | 物料量计算 | 核心公式展示 + 结果 |
+| 6 | 效期校验与汇总 | 自动校验 + 仓库汇总 |
+| 7 | 供应商分配与预警 | 🔴🟡🟢三级预警 + 参数调整 |
+| 8 | 备货确认与输出 | "确认方案" + "导出Excel" |
+
+### 核心公式引擎
+基于 PRD V5.0，使用 724 Excel 真实数据验证：
+```
+W1物料量 = 首周日均杯量 × 区域系数 × W1占比 × 7 ÷ 应用率W1 × 备货系数
+W2-W4物料量 = 月日均杯量 × 区域系数 × Wn占比 × 7 ÷ 应用率Wn × 备货系数
+预测总量 = round(W1 + W2 + W3 + W4)
+```
+
+## 🎨 设计系统
+
+复用 ICU 代码库的霸王茶姬品牌设计：
+- **主色**：pine `#143c36`（深绿）
+- **强调色**：amber `#e3a93b`（金）、jade `#42a170`（翠）
+- **标题字体**：宋体（STSong / Songti SC）
+- **正文字体**：思源黑体
+
+## 🛠 技术栈
+
+- React 18 + TypeScript
+- Vite（开发服务器 + 构建）
+- Ant Design 6 + @ant-design/icons
+- Recharts（图表）
+- Framer Motion（动画）
+
+## 📁 项目结构
+
+```
+src/
+├── App.tsx              # 主组件（8步向导 + 对话面板）
+├── types.ts             # TypeScript 类型定义
+├── styles.css           # 全局样式（设计令牌）
+├── data/
+│   └── mock.ts          # 724 Excel 真实数据 mock
+└── engine/
+    ├── calculator.ts    # 核心公式引擎
+    └── nlu.ts           # 自然语言意图解析
+```
+
+## 📝 示例对话
+
+```
+用户: 帮我创建新品苹果莲雾汁，首周日均15000杯，首月日均16000杯
+AI:   新品信息已录入 ✅
+      • 名称：苹果莲雾汁
+      • 首周日均：15,000 杯
+      • 首月日均：16,000 杯
+
+用户: 选择全部核心物料
+AI:   已选择全部 5 种物料 ✅
+
+用户: 调整华东区域系数为1.8
+AI:   已将华东区域系数从 2.0 调整为 1.8 ✅
+      ⚠️ 注意：调低华东系数会减少华东区域的备货量
+
+用户: 重新计算
+AI:   计算完成 ✅
+      📊 计算摘要
+      • 预测门店：16 家
+      • 四周总预测杯量：28,450 杯
+      • 7仓汇总备货量：12,847 单位
+
+用户: 确认备货方案
+AI:   🎉 备货方案已确认！
+```
+
+## 🔜 后续优化方向
+
+- [ ] 接入真实后端 API（ICU 代码库）
+- [ ] Excel 文件上传解析（BOM/历史数据/统配数据）
+- [ ] 区域系数可视化地图
+- [ ] 移动端适配（飞书 H5 嵌入）
+- [ ] 多轮对话上下文记忆
+- [ ] 参数调整的 what-if 模拟
+
+## 📄 License
+
+Internal use only — 熵海领航 × 霸王茶姬
