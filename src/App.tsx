@@ -11,6 +11,13 @@ const STEP_LABELS = [
   '供应商分配与预警', '备货确认与输出',
 ];
 
+const SKILLS = [
+  { id: 'newproduct', name: '新品分仓备货', icon: '📦', desc: '新品从录入到备货方案全流程' },
+  { id: 'query', name: '智能问数', icon: '📊', desc: '自然语言查询供应链数据' },
+  { id: 'stockout', name: '缺货归因', icon: '⚠️', desc: '缺货原因分析与补货建议' },
+  { id: 'forecast', name: '销量预测', icon: '📈', desc: '基于历史数据的销量预测' },
+];
+
 function App() {
   const [step, setStep] = useState<WizardStep>(1);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -23,6 +30,8 @@ function App() {
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [activeSkill, setActiveSkill] = useState(SKILLS[0]);
+  const [showSkillPicker, setShowSkillPicker] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const initialized = useRef(false);
 
@@ -417,14 +426,53 @@ function App() {
 
           {/* Input */}
           <div className="chat-input-area">
-            <input
-              value={inputText}
-              onChange={e => setInputText(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && sendMessage()}
-              placeholder={'输入自然语言指令，如"创建新品苹果莲雾汁"...'}
-              disabled={isTyping}
-            />
-            <button onClick={sendMessage} disabled={isTyping || !inputText.trim()}>发送</button>
+            <div className="input-toolbar">
+              <button
+                className="skill-btn"
+                onClick={() => setShowSkillPicker(!showSkillPicker)}
+              >
+                <span className="skill-btn-icon">+</span>
+                <span>选择技能</span>
+                {activeSkill && <span className="skill-btn-active">{activeSkill.icon} {activeSkill.name}</span>}
+              </button>
+            </div>
+            {showSkillPicker && (
+              <div className="skill-picker">
+                <div className="skill-picker-title">选择技能</div>
+                <div className="skill-picker-list">
+                  {SKILLS.map(skill => (
+                    <button
+                      key={skill.id}
+                      className={`skill-picker-item ${activeSkill.id === skill.id ? 'active' : ''}`}
+                      onClick={() => {
+                        setActiveSkill(skill);
+                        setShowSkillPicker(false);
+                        if (skill.id !== 'newproduct') {
+                          addBotMessage(`已切换到「${skill.name}」技能。\n\n${skill.desc}\n\n（该技能 Demo 开发中，敬请期待）`);
+                        }
+                      }}
+                    >
+                      <span className="skill-picker-icon">{skill.icon}</span>
+                      <div className="skill-picker-info">
+                        <div className="skill-picker-name">{skill.name}</div>
+                        <div className="skill-picker-desc">{skill.desc}</div>
+                      </div>
+                      {activeSkill.id === skill.id && <span className="skill-picker-check">✓</span>}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="input-row">
+              <input
+                value={inputText}
+                onChange={e => setInputText(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && sendMessage()}
+                placeholder={`输入自然语言指令，如"创建新品苹果莲雾汁"...`}
+                disabled={isTyping}
+              />
+              <button onClick={sendMessage} disabled={isTyping || !inputText.trim()}>发送</button>
+            </div>
           </div>
         </div>
 
