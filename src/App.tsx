@@ -31,20 +31,11 @@ function App() {
   const [isTyping, setIsTyping] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [activeSkill, setActiveSkill] = useState(SKILLS[0]);
-  const [showSkillPicker, setShowSkillPicker] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const initialized = useRef(false);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
-
-  // Welcome message
-  useEffect(() => {
-    if (initialized.current) return;
-    initialized.current = true;
-    addBotMessage('你好！我是 AI CEO 新品分仓助手 🤖\n\n我可以帮你完成新品从录入到备货方案输出的全流程。\n\n你可以用自然语言告诉我你想做什么，比如：\n• "帮我创建新品苹果莲雾汁，首周日均15000杯"\n• "选择全部核心物料"\n• "调整华东区域系数为1.8"\n• "确认备货方案"\n\n也可以点击下方快捷指令快速操作。\n\n现在，请告诉我新品的信息吧！');
-  }, []);
 
   const addBotMessage = useCallback((content: string, thinking?: string[]) => {
     setMessages(prev => [...prev, {
@@ -335,8 +326,6 @@ function App() {
     handleUserInput(text);
   };
 
-  const quickCmds = QUICK_COMMANDS[step] || [];
-
   return (
     <div className="app-container">
       {/* Header */}
@@ -373,105 +362,123 @@ function App() {
         {/* Left: Chat Panel */}
         <div className="chat-panel">
           <div className="chat-header">
-            <span>🤖</span> AI CEO 助手
-            <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>
-              自然语言驱动
-            </span>
+            <div className="chat-header-left">
+              <span className="chat-header-title">🤖 AI CEO 助手</span>
+              <span className="chat-header-status">
+                <span className="status-dot" />
+                在线
+              </span>
+            </div>
+            <span className="chat-header-sub">自然语言驱动</span>
           </div>
           <div className="chat-messages">
+            {/* Empty state: show skill description + quick questions */}
+            {messages.length === 0 && (
+              <div className="chat-empty-state">
+                <div className="empty-skill-icon">{activeSkill.icon}</div>
+                <h3 className="empty-title">{activeSkill.name}</h3>
+                <p className="empty-desc">{activeSkill.desc}</p>
+                <div className="empty-quick-section">
+                  <p className="empty-quick-label">快捷操作：</p>
+                  {(QUICK_COMMANDS[step] || []).map((cmd, i) => (
+                    <button key={i} className="empty-quick-btn" onClick={() => sendQuickCommand(cmd.text)} disabled={isTyping}>
+                      {cmd.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="empty-try-section">
+                  <p className="empty-try-label">试试这些交互：</p>
+                  <button className="empty-try-btn" onClick={() => handleUserInput('帮我创建新品苹果莲雾汁，首周日均15000杯')} disabled={isTyping}>
+                    💡 "帮我创建新品苹果莲雾汁，首周日均15000杯"
+                  </button>
+                  <button className="empty-try-btn" onClick={() => handleUserInput('选择全部核心物料')} disabled={isTyping}>
+                    💡 "选择全部核心物料"
+                  </button>
+                  <button className="empty-try-btn" onClick={() => handleUserInput('调整华东区域系数为1.8')} disabled={isTyping}>
+                    💡 "调整华东区域系数为1.8"
+                  </button>
+                </div>
+              </div>
+            )}
+
             {messages.map(msg => (
               <div key={msg.id} className={`chat-msg ${msg.role}`}>
-                <div className="chat-avatar">{msg.role === 'assistant' ? 'AI' : '王'}</div>
+                {msg.role === 'assistant' ? (
+                  <div className="chat-avatar bot-avatar-icon">🤖</div>
+                ) : (
+                  <div className="chat-avatar user-avatar-icon">王</div>
+                )}
                 <div className="chat-bubble-wrapper">
                   {msg.thinking && msg.thinking.length > 0 && (
                     <div className="thinking-chain">
                       {msg.thinking.map((t, i) => (
                         <div key={i} className="thinking-step">
-                          <span className="step-icon">{i + 1}</span>
+                          <span className="step-icon">✓</span>
                           <span>{t}</span>
                         </div>
                       ))}
                     </div>
                   )}
                   <div className="chat-bubble">{formatMessage(msg.content)}</div>
+                  {/* Feedback buttons for bot messages */}
+                  {msg.role === 'assistant' && msg.content && (
+                    <div className="msg-feedback">
+                      <span className="feedback-label">有帮助吗？</span>
+                      <button className="feedback-btn" onClick={() => {}}>👍</button>
+                      <button className="feedback-btn" onClick={() => {}}>👎</button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
             {isTyping && (
               <div className="chat-msg assistant">
-                <div className="chat-avatar">AI</div>
+                <div className="chat-avatar bot-avatar-icon">🤖</div>
                 <div className="chat-bubble typing-indicator">
                   <span className="dot-typing" /><span className="dot-typing" /><span className="dot-typing" />
+                  <span className="typing-text">AI分析中...</span>
                 </div>
               </div>
             )}
             <div ref={chatEndRef} />
           </div>
 
-          {/* Quick Commands */}
-          {quickCmds.length > 0 && (
-            <div className="quick-commands">
-              {quickCmds.map((cmd, i) => (
-                <button
-                  key={i}
-                  className="quick-cmd"
-                  onClick={() => sendQuickCommand(cmd.text)}
-                  disabled={isTyping}
-                >
-                  {cmd.label}
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Input */}
+          {/* Input Area - textarea with send inside + skill buttons below */}
           <div className="chat-input-area">
-            <div className="input-toolbar">
-              <button
-                className="skill-btn"
-                onClick={() => setShowSkillPicker(!showSkillPicker)}
-              >
-                <span className="skill-btn-icon">+</span>
-                <span>选择技能</span>
-                {activeSkill && <span className="skill-btn-active">{activeSkill.icon} {activeSkill.name}</span>}
-              </button>
-            </div>
-            {showSkillPicker && (
-              <div className="skill-picker">
-                <div className="skill-picker-title">选择技能</div>
-                <div className="skill-picker-list">
-                  {SKILLS.map(skill => (
-                    <button
-                      key={skill.id}
-                      className={`skill-picker-item ${activeSkill.id === skill.id ? 'active' : ''}`}
-                      onClick={() => {
-                        setActiveSkill(skill);
-                        setShowSkillPicker(false);
-                        if (skill.id !== 'newproduct') {
-                          addBotMessage(`已切换到「${skill.name}」技能。\n\n${skill.desc}\n\n（该技能 Demo 开发中，敬请期待）`);
-                        }
-                      }}
-                    >
-                      <span className="skill-picker-icon">{skill.icon}</span>
-                      <div className="skill-picker-info">
-                        <div className="skill-picker-name">{skill.name}</div>
-                        <div className="skill-picker-desc">{skill.desc}</div>
-                      </div>
-                      {activeSkill.id === skill.id && <span className="skill-picker-check">✓</span>}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-            <div className="input-row">
-              <input
+            <div className="input-box-wrapper">
+              <textarea
+                className="chat-textarea"
                 value={inputText}
                 onChange={e => setInputText(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && sendMessage()}
-                placeholder={`输入自然语言指令，如"创建新品苹果莲雾汁"...`}
+                onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
+                placeholder="用自然语言输入指令..."
                 disabled={isTyping}
+                rows={1}
               />
-              <button onClick={sendMessage} disabled={isTyping || !inputText.trim()}>发送</button>
+              <button
+                className={`send-btn-inside ${inputText.trim() ? 'active' : ''}`}
+                onClick={sendMessage}
+                disabled={isTyping || !inputText.trim()}
+              >
+                ➤
+              </button>
+            </div>
+            <div className="skill-tabs-below">
+              {SKILLS.map(skill => (
+                <button
+                  key={skill.id}
+                  className={`skill-tab ${activeSkill.id === skill.id ? 'active' : ''}`}
+                  onClick={() => {
+                    setActiveSkill(skill);
+                    if (skill.id !== 'newproduct') {
+                      addBotMessage(`已切换到「${skill.name}」技能。\n\n${skill.desc}\n\n（该技能 Demo 开发中，敬请期待）`);
+                    }
+                  }}
+                >
+                  <span>{skill.icon}</span>
+                  <span>{skill.name}</span>
+                </button>
+              ))}
             </div>
           </div>
         </div>
