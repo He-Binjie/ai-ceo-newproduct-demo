@@ -16,65 +16,71 @@ const SKILLS = [
 
 type Step = 0 | 1 | 2 | 3 | 4;
 
-// 参数调整解析器
-function parseParameterAdjustment(text: string): { response: string; thinking: string[] } | null {
+// 参数调整解析器 — 返回 targetStep 用于自动定位
+function parseParameterAdjustment(text: string): { response: string; thinking: string[]; targetStep: Step } | null {
   const lower = text.toLowerCase();
 
-  // 区域系数调整
+  // 区域系数调整 → Step 2
   const regionMatch = text.match(/(?:调整|修改|设置)\s*区域系数\s*(\S+)\s+([\d.]+)/);
   if (regionMatch) {
     const [, subsidiary, value] = regionMatch;
     return {
-      response: `✅ 已调整区域系数\n\n• **${subsidiary}**：→ **${value}**\n\n修改已记录，确认后将在下一步计算中使用新系数。\n\n💡 你还可以继续调整：\n• "调整区域系数 广东 1.05"\n• "调整备货系数 莲雾苹果汁 1.2"\n• "调整W1占比 0.06"\n• "安全库存改成7天"`,
-      thinking: [`修改区域系数：${subsidiary} → ${value}`],
+      response: `✅ 已调整区域系数\n\n• **${subsidiary}**：→ **${value}**\n\n修改已记录，正在重新计算 Step 2 系数修正...\n\n💡 你还可以继续调整：\n• "调整区域系数 广东 1.05"\n• "调整备货系数 莲雾苹果汁 1.2"\n• "调整W1占比 0.06"\n• "安全库存改成7天"`,
+      thinking: [`修改区域系数：${subsidiary} → ${value}`, `自动定位到 Step 2 系数修正`, `使用新系数重新计算物料量...`],
+      targetStep: 2,
     };
   }
 
-  // 备货系数调整
+  // 备货系数调整 → Step 2
   const stockMatch = text.match(/(?:调整|修改|设置)\s*备货系数\s*(\S+)\s+([\d.]+)/);
   if (stockMatch) {
     const [, material, value] = stockMatch;
     return {
-      response: `✅ 已调整备货系数\n\n• **${material}**：→ **${value}**\n\n修改已记录，确认后将在下一步计算中使用新系数。\n\n💡 你还可以继续调整其他参数。`,
-      thinking: [`修改备货系数：${material} → ${value}`],
+      response: `✅ 已调整备货系数\n\n• **${material}**：→ **${value}**\n\n修改已记录，正在重新计算 Step 2 BOM拆解...\n\n💡 你还可以继续调整其他参数。`,
+      thinking: [`修改备货系数：${material} → ${value}`, `自动定位到 Step 2 BOM拆解`, `使用新备货系数重新计算物料量...`],
+      targetStep: 2,
     };
   }
 
-  // W1-W4占比调整
+  // W1-W4占比调整 → Step 2
   const wMatch = text.match(/(?:调整|修改|设置)\s*(W[1-4])\s*占比\s+([\d.]+)/);
   if (wMatch) {
     const [, week, value] = wMatch;
     return {
-      response: `✅ 已调整${week}占比\n\n• **${week}**：→ **${value}**\n\n⚠️ W1-W4为成品维度参数，修改后所有物料同步生效。\n\n修改已记录，确认后将在下一步计算中使用新值。`,
-      thinking: [`修改${week}占比 → ${value}（成品维度，全物料生效）`],
+      response: `✅ 已调整${week}占比\n\n• **${week}**：→ **${value}**\n\n⚠️ W1-W4为成品维度参数，修改后所有物料同步生效。\n\n修改已记录，正在重新计算 Step 2 物料量...`,
+      thinking: [`修改${week}占比 → ${value}（成品维度，全物料生效）`, `自动定位到 Step 2 物料量计算`, `重新计算所有物料 W1-W4 用量...`],
+      targetStep: 2,
     };
   }
 
-  // 安全库存天数调整
+  // 安全库存天数调整 → Step 3
   const safetyMatch = text.match(/(?:安全库存|安库)\s*(?:改成|调整为|设置为?)\s*(\d+)\s*天?/);
   if (safetyMatch) {
     const [, days] = safetyMatch;
     return {
-      response: `✅ 已调整安全库存天数\n\n• 安全库存：5天 → **${days}天**\n\n修改已记录，确认后将在安全库存校验中使用新阈值。`,
-      thinking: [`修改安全库存天数：5天 → ${days}天`],
+      response: `✅ 已调整安全库存天数\n\n• 安全库存：5天 → **${days}天**\n\n修改已记录，正在重新校验 Step 3 安全库存...`,
+      thinking: [`修改安全库存天数：5天 → ${days}天`, `自动定位到 Step 3 预警检查`, `重新校验所有仓库安全库存...`],
+      targetStep: 3,
     };
   }
 
-  // 供应商设置
+  // 供应商设置 → Step 3
   const supplierMatch = text.match(/(?:设置|调整)\s*供应商\s+(\S+)\s+(\S+)\s+(\d+)%?\s*(?:MOQ\s*)?(\d+)?/i);
   if (supplierMatch) {
     const [, material, supplier, share, moq] = supplierMatch;
     return {
-      response: `✅ 已设置供应商信息\n\n• **${material}**\n  - 供应商：${supplier}\n  - 份额：${share}%\n  - MOQ：${moq || '1（默认）'}\n\n💡 份额之和必须=100%，可继续添加其他供应商。`,
-      thinking: [`设置供应商：${material} → ${supplier} ${share}% MOQ=${moq || 1}`],
+      response: `✅ 已设置供应商信息\n\n• **${material}**\n  - 供应商：${supplier}\n  - 份额：${share}%\n  - MOQ：${moq || '1（默认）'}\n\n💡 份额之和必须=100%，可继续添加其他供应商。\n\n修改已记录，正在重新计算 Step 3 供应商分配...`,
+      thinking: [`设置供应商：${material} → ${supplier} ${share}% MOQ=${moq || 1}`, `自动定位到 Step 3 供应商分配`, `重新计算供应商份额与MOQ取整...`],
+      targetStep: 3,
     };
   }
 
-  // 帮助/可调参数列表
+  // 帮助/可调参数列表 — 不跳转
   if (lower.includes('可调') || lower.includes('调参') || lower.includes('修改参数') || lower.includes('帮助') || lower.includes('help')) {
     return {
-      response: `📋 **可调整参数清单**\n\n以下参数支持在对话中直接输入修改：\n\n**1. 区域系数**（分公司维度）\n• 格式：\`调整区域系数 湖北 1.1\`\n• 说明：修改某子公司的区域系数\n\n**2. 备货系数**（物料维度）\n• 格式：\`调整备货系数 莲雾苹果汁 1.2\`\n• 说明：修改某物料的备货系数\n\n**3. W1-W4占比**（成品维度）\n• 格式：\`调整W1占比 0.06\`\n• 说明：修改后所有物料同步生效\n\n**4. 安全库存天数**\n• 格式：\`安全库存改成7天\`\n• 说明：默认5天\n\n**5. 供应商信息**\n• 格式：\`设置供应商 莲雾苹果汁 供应商A 40% MOQ500\`\n• 说明：份额之和必须=100%`,
+      response: `📋 **可调整参数清单**\n\n以下参数支持在对话中直接输入修改：\n\n**1. 区域系数**（分公司维度）→ 影响 Step 2\n• 格式：\`调整区域系数 湖北 1.1\`\n• 说明：修改某子公司的区域系数\n\n**2. 备货系数**（物料维度）→ 影响 Step 2\n• 格式：\`调整备货系数 莲雾苹果汁 1.2\`\n• 说明：修改某物料的备货系数\n\n**3. W1-W4占比**（成品维度）→ 影响 Step 2\n• 格式：\`调整W1占比 0.06\`\n• 说明：修改后所有物料同步生效\n\n**4. 安全库存天数** → 影响 Step 3\n• 格式：\`安全库存改成7天\`\n• 说明：默认5天\n\n**5. 供应商信息** → 影响 Step 3\n• 格式：\`设置供应商 莲雾苹果汁 供应商A 40% MOQ500\`\n• 说明：份额之和必须=100%`,
       thinking: ['展示可调参数清单'],
+      targetStep: 0 as Step, // 0 means no navigation
     };
   }
 
@@ -157,7 +163,7 @@ function App() {
         break;
       case 1:
         simulateTyping(
-          `已从飞书多维表格读取 **${productInfo.name}** 的信息 ✅\n\n📊 **预测杯量**\n• 在营门店数：**${productInfo.storeCount.toLocaleString()}** 家（滚动30天）\n• 大盘预测首周日均：**${productInfo.firstWeekDailyCups}** 杯\n• 大盘预测首月日均：**${productInfo.firstMonthDailyCups}** 杯\n• 全国首周日均总量：**${(productInfo.firstWeekDailyCups * productInfo.storeCount).toLocaleString()}** 杯\n• 全国月日均总量：**${(productInfo.firstMonthDailyCups * productInfo.storeCount).toLocaleString()}** 杯\n\n🏪 **代表性门店预测**（详见右侧）\n• 北京王府井APM店：首周日均 **1,077.92** 杯\n• 上海南京西路店：首周日均 **1,245.30** 杯\n\n⚠️ 数据一致性校验：首月日均(${productInfo.firstMonthDailyCups}) ≥ 首周日均(${productInfo.firstWeekDailyCups}) ✅`,
+          `已从飞书多维表格读取 **${productInfo.name}** 的信息 ✅\n\n📊 **预测杯量**\n• 在营门店数：**${productInfo.storeCount.toLocaleString()}** 家（滚动30天）\n• 大盘预测首周日均：**${productInfo.firstWeekDailyCups}** 杯\n• 大盘预测首月日均：**${productInfo.firstMonthDailyCups}** 杯\n• 全国首周日均总量：**${(productInfo.firstWeekDailyCups * productInfo.storeCount).toLocaleString()}** 杯\n• 全国月日均总量：**${(productInfo.firstMonthDailyCups * productInfo.storeCount).toLocaleString()}** 杯\n\n🏪 **全部门店预测**（详见右侧，支持分页浏览）\n• 北京王府井APM店：首周日均 **1,077.92** 杯\n• 上海南京西路店：首周日均 **1,245.30** 杯\n\n⚠️ 数据一致性校验：首月日均(${productInfo.firstMonthDailyCups}) ≥ 首周日均(${productInfo.firstWeekDailyCups}) ✅`,
           ['读取飞书多维表格：新品基础信息表', '系统自动获取：滚动30天在营门店数', '抓取成品销售报表：7,188家门店', '计算门店销量占比 + 下限保护'],
           [{ label: '✅ 确认，继续', type: 'confirm' }],
         );
@@ -228,13 +234,19 @@ function App() {
       return;
     }
 
-    // 参数调整识别
+    // 参数调整识别 — 自动定位到对应step并重新引导计算
     const paramResult = parseParameterAdjustment(text);
     if (paramResult) {
+      // 自动定位到对应step的右侧面板
+      if (paramResult.targetStep > 0 && step >= paramResult.targetStep) {
+        setRightTab(paramResult.targetStep);
+      }
       setIsTyping(true);
       setTimeout(() => {
         setIsTyping(false);
-        addBotMessage(paramResult.response, paramResult.thinking);
+        addBotMessage(paramResult.response, paramResult.thinking, 
+          paramResult.targetStep > 0 ? [{ label: '✅ 确认重算结果，继续', type: 'confirm' }, { label: '✏️ 继续调参', type: 'edit' }] : undefined
+        );
       }, 600);
       return;
     }
@@ -410,7 +422,10 @@ function App() {
                               }
                             }
                             else if (action.type === 'export') handleUserInput('导出Excel');
-                            else if (action.type === 'recalculate') addBotMessage('🔄 正在使用新参数重新计算...');
+                            else if (action.type === 'recalculate') {
+                              addBotMessage('🔄 正在使用新参数重新计算...');
+                              setTimeout(() => triggerStepMessage(step), 800);
+                            }
                             else if (action.type === 'notify') addBotMessage('📤 已发送飞书通知 ✅');
                             else if (action.type === 'skip') {
                               if (step === 3) {
@@ -578,6 +593,13 @@ function RightEmptyState() {
 }
 
 function RightStep1CupForecast({ productInfo, materials }: { productInfo: NewProductInfo; materials: BOMMaterial[] }) {
+  const [storePage, setStorePage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const totalStores = mockStoreSamples.length;
+  const totalPages = Math.ceil(totalStores / pageSize);
+  const startIdx = (storePage - 1) * pageSize;
+  const pageStores = mockStoreSamples.slice(startIdx, startIdx + pageSize);
+
   return (
     <div className="animate-in">
       <div className="panel-title"><span className="step-badge">Step 1</span>预测杯量</div>
@@ -631,15 +653,16 @@ function RightStep1CupForecast({ productInfo, materials }: { productInfo: NewPro
         <div className="kpi-card"><div className="kpi-label">触发下限保护</div><div className="kpi-value" style={{ color: 'var(--warn)' }}>~200<span className="kpi-unit">家</span></div></div>
       </div>
       <div className="card">
-        <div className="card-title">🏪 代表性门店预测明细</div>
+        <div className="card-title">🏪 全部门店预测明细</div>
         <div style={{ overflowX: 'auto' }}>
           <table className="data-table">
-            <thead><tr><th>门店编码</th><th>门店名称</th><th className="num">5月销量</th><th className="num">占比</th><th className="num">首周日均</th><th className="num">月日均</th></tr></thead>
+            <thead><tr><th>门店编码</th><th>门店名称</th><th>子公司</th><th className="num">5月销量</th><th className="num">占比</th><th className="num">首周日均</th><th className="num">月日均</th></tr></thead>
             <tbody>
-              {mockStoreSamples.map((s, i) => (
+              {pageStores.map((s, i) => (
                 <tr key={i}>
                   <td style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{s.storeId}</td>
                   <td style={{ fontWeight: 600, fontSize: 11 }}>{s.storeName}</td>
+                  <td style={{ fontSize: 11 }}>{s.subsidiary}</td>
                   <td className="num">{s.maySales.toLocaleString()}</td>
                   <td className="num">{(s.salesRatio * 100).toFixed(4)}%</td>
                   <td className="num">{s.firstWeekDaily.toFixed(2)}</td>
@@ -648,6 +671,24 @@ function RightStep1CupForecast({ productInfo, materials }: { productInfo: NewPro
               ))}
             </tbody>
           </table>
+        </div>
+        {/* 分页控件 */}
+        <div className="pagination-bar">
+          <div className="pagination-info">
+            共 <strong>{totalStores}</strong> 条（展示 {totalStores} 家，实际 {productInfo.storeCount.toLocaleString()} 家）
+          </div>
+          <div className="pagination-controls">
+            <select className="page-size-select" value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setStorePage(1); }}>
+              <option value={10}>10条/页</option>
+              <option value={20}>20条/页</option>
+              <option value={50}>50条/页</option>
+            </select>
+            <button className="page-btn" disabled={storePage <= 1} onClick={() => setStorePage(1)}>首页</button>
+            <button className="page-btn" disabled={storePage <= 1} onClick={() => setStorePage(p => p - 1)}>上一页</button>
+            <span className="page-indicator">{storePage} / {totalPages}</span>
+            <button className="page-btn" disabled={storePage >= totalPages} onClick={() => setStorePage(p => p + 1)}>下一页</button>
+            <button className="page-btn" disabled={storePage >= totalPages} onClick={() => setStorePage(totalPages)}>末页</button>
+          </div>
         </div>
       </div>
       <div className="card">
