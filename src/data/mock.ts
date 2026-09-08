@@ -179,6 +179,39 @@ export const mockRegionCoefficients: RegionCoefficient[] = [
   { subsidiary: '山西子公司', rawValue: 1.036, coefficient: 1.036, isFloored: false, editable: true },
 ];
 
+// ===== 区域系数计算过程：每个历史品在每个子公司的达标率（实际/预测） =====
+// 展示用：选取5个代表性子公司 × 23个历史品的达标率
+export const regionCalcProcess = {
+  // 展示5个代表性子公司（含兜底和非兜底）
+  sampleSubs: ['湖北子公司', '广东子公司', '浙江子公司', '北京子公司', '辽宁子公司'],
+  // 23个历史品在这些子公司的达标率（实际销量/预测销量）
+  data: [
+    { name: '归云南·云漫普洱',    hubei: 1.210, guangdong: 0.830, zhejiang: 1.090, beijing: 1.010, liaoning: 1.200 },
+    { name: '归云南·云卷松风',    hubei: 1.180, guangdong: 0.810, zhejiang: 1.070, beijing: 0.980, liaoning: 1.170 },
+    { name: '归云南',             hubei: 1.220, guangdong: 0.840, zhejiang: 1.100, beijing: 1.020, liaoning: 1.210 },
+    { name: '一抹山月',           hubei: 1.190, guangdong: 0.800, zhejiang: 1.080, beijing: 0.990, liaoning: 1.180 },
+    { name: '月抹静山',           hubei: 1.200, guangdong: 0.820, zhejiang: 1.060, beijing: 1.000, liaoning: 1.190 },
+    { name: '白雾红尘',           hubei: 1.180, guangdong: 0.850, zhejiang: 1.090, beijing: 1.010, liaoning: 1.200 },
+    { name: '肉桂橙大红袍',       hubei: 1.210, guangdong: 0.830, zhejiang: 1.100, beijing: 0.990, liaoning: 1.180 },
+    { name: '草莓云顶大红袍',     hubei: 1.190, guangdong: 0.810, zhejiang: 1.080, beijing: 1.000, liaoning: 1.190 },
+    { name: '芒果云顶大红袍',     hubei: 1.200, guangdong: 0.840, zhejiang: 1.070, beijing: 0.980, liaoning: 1.170 },
+    { name: '轻因·云游栖梦',      hubei: 1.170, guangdong: 0.790, zhejiang: 1.060, beijing: 0.970, liaoning: 1.160 },
+    { name: '轻因·花田乌龙',      hubei: 1.180, guangdong: 0.800, zhejiang: 1.050, beijing: 0.990, liaoning: 1.180 },
+    { name: '轻因·伯牙绝弦',      hubei: 1.190, guangdong: 0.820, zhejiang: 1.080, beijing: 1.010, liaoning: 1.190 },
+    { name: '轻因·云栖梦',        hubei: 1.200, guangdong: 0.810, zhejiang: 1.070, beijing: 0.980, liaoning: 1.170 },
+    { name: '醒时春山',           hubei: 1.210, guangdong: 0.830, zhejiang: 1.090, beijing: 1.000, liaoning: 1.200 },
+    { name: '龙井玄米酪',         hubei: 1.180, guangdong: 0.840, zhejiang: 1.100, beijing: 1.010, liaoning: 1.180 },
+    { name: '海上雾奇兰',         hubei: 1.190, guangdong: 0.820, zhejiang: 1.080, beijing: 0.990, liaoning: 1.190 },
+    { name: '小森林柚子',         hubei: 1.220, guangdong: 0.850, zhejiang: 1.110, beijing: 1.020, liaoning: 1.210 },
+    { name: '晴天罗勒桃',         hubei: 1.200, guangdong: 0.830, zhejiang: 1.090, beijing: 1.000, liaoning: 1.200 },
+    { name: '夏梦玫珑',           hubei: 1.210, guangdong: 0.840, zhejiang: 1.100, beijing: 1.010, liaoning: 1.190 },
+    { name: '蜜瓜开心果椰',       hubei: 1.180, guangdong: 0.810, zhejiang: 1.070, beijing: 0.980, liaoning: 1.180 },
+    { name: '诶？橙柚康普',       hubei: 1.190, guangdong: 0.820, zhejiang: 1.080, beijing: 1.000, liaoning: 1.190 },
+    { name: '嘿！菠萝马黛',       hubei: 1.200, guangdong: 0.830, zhejiang: 1.090, beijing: 0.990, liaoning: 1.200 },
+    { name: '耶～抹茶龙井',       hubei: 1.180, guangdong: 0.800, zhejiang: 1.060, beijing: 0.980, liaoning: 1.170 },
+  ],
+};
+
 // ===== 全部门店数据（50条mock，支持分页） =====
 const storeBaseData: Array<{ id: string; name: string; wh: string; sub: string; prov: string; city: string; sales: number }> = [
   { id: '1101010005', name: '北京王府井APM店', wh: '北京二级仓', sub: '北京子公司', prov: '北京市', city: '北京市', sales: 29837 },
@@ -259,24 +292,21 @@ export const mockUnifiedDistribution: UnifiedDistribution[] = [
   { storeId: '1101010006', storeName: '北京王府井喜悦店', warehouse: '北京二级仓', materials: [{ name: '安溪铁观音', qty: 5 }, { name: '莲雾苹果汁', qty: 35 }, { name: '冷冻生椰乳', qty: 12 }] },
 ];
 
-// ===== 全国物料汇总（724 Excel） =====
+// ===== 全国物料汇总（与BOM 4种物料统一） =====
 export const nationalMaterialSummary = [
   { name: '安溪铁观音', forecastQty: 66285, allocationQty: 23365, extraStock: 42920, orderQty: 66285 },
   { name: '莲雾苹果汁', forecastQty: 363340, allocationQty: 138786, extraStock: 224554, orderQty: 363540 },
-  { name: '东方美人乌龙茶-A', forecastQty: 28585, allocationQty: 0, extraStock: 28585, orderQty: 28655 },
-  { name: '老盐糖浆', forecastQty: 24825, allocationQty: 10231, extraStock: 14594, orderQty: 25032 },
   { name: '冷冻生椰乳', forecastQty: 138095, allocationQty: 59779, extraStock: 78316, orderQty: 138345 },
-  { name: '冷冻凤梨汁', forecastQty: 128517, allocationQty: 0, extraStock: 128517, orderQty: 128712 },
-  { name: '椰子水', forecastQty: 174821, allocationQty: 0, extraStock: 174821, orderQty: 174996 },
+  { name: '东方美人乌龙茶-A', forecastQty: 28585, allocationQty: 0, extraStock: 28585, orderQty: 28655 },
 ];
 
-// ===== 仓库汇总示例 =====
+// ===== 仓库汇总示例（与BOM 4种物料统一） =====
 export const warehouseSummarySample = {
   warehouseName: '北京二级仓',
   materials: [
     { name: '安溪铁观音', allocationQty: 589, extraStock: 1539, total: 2128, orderQty: 2128 },
     { name: '莲雾苹果汁', allocationQty: 5154, extraStock: 8245, total: 13399, orderQty: 13404 },
-    { name: '东方美人乌龙茶-A', allocationQty: 0, extraStock: 823, total: 823, orderQty: 825 },
     { name: '冷冻生椰乳', allocationQty: 2792, extraStock: 2035, total: 4827, orderQty: 4830 },
+    { name: '东方美人乌龙茶-A', allocationQty: 0, extraStock: 823, total: 823, orderQty: 825 },
   ],
 };

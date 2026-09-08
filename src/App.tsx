@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import './styles.css';
 import type { ChatMessage, NewProductInfo, BOMMaterial, RegionCoefficient, ConfirmAction } from './types';
-import { mockProduct, mockMaterials, mockRegionCoefficients, historicalProducts, mockStoreSamples, nationalMaterialSummary, warehouseSummarySample, newProductList } from './data/mock';
+import { mockProduct, mockMaterials, mockRegionCoefficients, historicalProducts, mockStoreSamples, nationalMaterialSummary, warehouseSummarySample, newProductList, regionCalcProcess } from './data/mock';
 import { parseIntent } from './engine/nlu';
 
 // 简化为5步
@@ -184,7 +184,7 @@ function App() {
         break;
       case 4:
         simulateTyping(
-          `🎉 **分仓备货方案生成完成！**\n\n📊 **全国物料最终方案**\n• 安溪铁观音：66,285 箱\n• 莲雾苹果汁：363,540 瓶\n• 东方美人：28,655 袋\n• 老盐糖浆：25,032 瓶\n• 冷冻生椰乳：138,345 瓶\n• 冷冻凤梨汁：128,712 瓶\n• 椰子水：174,996 瓶\n\n📋 预警汇总：全部通过 ✅\n⚠️ 异常统配门店：12家（已标记）\n\n📥 导出Excel包含 **5个Sheet**：\n• Sheet1: 门店明细\n• Sheet2: 仓库汇总\n• Sheet3: 供应商分配\n• Sheet4: 预警清单\n• Sheet5: SCM导入模板`,
+          `🎉 **分仓备货方案生成完成！**\n\n📊 **全国物料最终方案**\n• 安溪铁观音：66,285 箱\n• 莲雾苹果汁：363,540 瓶\n• 冷冻生椰乳：138,345 瓶\n• 东方美人乌龙茶-A：28,655 袋\n\n📋 预警汇总：全部通过 ✅\n⚠️ 异常统配门店：12家（已标记）\n\n📥 导出Excel包含 **5个Sheet**：\n• Sheet1: 门店明细\n• Sheet2: 仓库汇总\n• Sheet3: 供应商分配\n• Sheet4: 预警清单\n• Sheet5: SCM导入模板`,
           [],
           [{ label: '📥 导出Excel', type: 'export' }, { label: '📤 发送给相关人', type: 'notify' }, { label: '🔄 修改参数重跑', type: 'recalculate' }],
         );
@@ -703,18 +703,106 @@ function RightStep1CupForecast({ productInfo, materials }: { productInfo: NewPro
 }
 
 function RightStep2CoefficientsAndBOM({ regions, flooredCount, materials, productInfo }: { regions: RegionCoefficient[]; flooredCount: number; materials: BOMMaterial[]; productInfo: NewProductInfo }) {
+  const [showCalcDetail, setShowCalcDetail] = useState(false);
+
   return (
     <div className="animate-in">
       <div className="panel-title"><span className="step-badge">Step 2</span>系数修正 + BOM拆解</div>
 
       {/* 区域系数 */}
       <div className="card">
-        <div className="card-title">📐 区域系数（24个子公司）</div>
+        <div className="card-title">📐 区域系数（{historicalProducts.length}个历史品均值）</div>
         <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
           <div className="kpi-card"><div className="kpi-label">参考历史品数</div><div className="kpi-value" style={{ color: 'var(--accent)' }}>{historicalProducts.length}</div></div>
           <div className="kpi-card"><div className="kpi-label">兜底为1.0</div><div className="kpi-value" style={{ color: 'var(--warn)' }}>{flooredCount}</div></div>
           <div className="kpi-card"><div className="kpi-label">最高系数</div><div className="kpi-value">{Math.max(...regions.map(r => r.coefficient)).toFixed(3)}</div></div>
         </div>
+
+        {/* 计算过程展示 */}
+        <div style={{ marginTop: 12, marginBottom: 12 }}>
+          <button 
+            className="page-btn" 
+            style={{ fontSize: 12, padding: '6px 14px', fontWeight: 600 }}
+            onClick={() => setShowCalcDetail(!showCalcDetail)}
+          >
+            {showCalcDetail ? '▼' : '▶'} 查看计算过程（{historicalProducts.length}个历史品 × 5个代表性子公司）
+          </button>
+        </div>
+
+        {showCalcDetail && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.6 }}>
+              <strong>计算公式：</strong>区域系数 = AVG(历史品达标率) = AVG(实际销量 ÷ 预测销量)<br/>
+              <strong>兜底规则：</strong>若均值 &lt; 1.0 → 取 1.0（防止低估）
+            </div>
+            <div style={{ overflowX: 'auto', maxHeight: 360 }}>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th style={{ minWidth: 120 }}>历史品</th>
+                    {regionCalcProcess.sampleSubs.map(sub => (
+                      <th key={sub} className="num" style={{ minWidth: 70 }}>{sub.replace('子公司', '')}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {regionCalcProcess.data.map((item, i) => (
+                    <tr key={i}>
+                      <td style={{ fontSize: 11, fontWeight: 500 }}>{item.name}</td>
+                      <td className="num" style={{ color: item.hubei >= 1 ? 'var(--accent)' : 'var(--warn)', fontWeight: 600 }}>{item.hubei.toFixed(3)}</td>
+                      <td className="num" style={{ color: item.guangdong >= 1 ? 'var(--accent)' : 'var(--warn)', fontWeight: 600 }}>{item.guangdong.toFixed(3)}</td>
+                      <td className="num" style={{ color: item.zhejiang >= 1 ? 'var(--accent)' : 'var(--warn)', fontWeight: 600 }}>{item.zhejiang.toFixed(3)}</td>
+                      <td className="num" style={{ color: item.beijing >= 1 ? 'var(--accent)' : 'var(--warn)', fontWeight: 600 }}>{item.beijing.toFixed(3)}</td>
+                      <td className="num" style={{ color: item.liaoning >= 1 ? 'var(--accent)' : 'var(--warn)', fontWeight: 600 }}>{item.liaoning.toFixed(3)}</td>
+                    </tr>
+                  ))}
+                  {/* 均值行 */}
+                  <tr style={{ borderTop: '2px solid var(--accent)', background: 'var(--accent-light)' }}>
+                    <td style={{ fontWeight: 700, fontSize: 12 }}>均值（23品）</td>
+                    <td className="num" style={{ fontWeight: 700, color: 'var(--accent)' }}>
+                      {(regionCalcProcess.data.reduce((s, d) => s + d.hubei, 0) / regionCalcProcess.data.length).toFixed(3)}
+                    </td>
+                    <td className="num" style={{ fontWeight: 700, color: 'var(--warn)' }}>
+                      {(regionCalcProcess.data.reduce((s, d) => s + d.guangdong, 0) / regionCalcProcess.data.length).toFixed(3)}
+                    </td>
+                    <td className="num" style={{ fontWeight: 700, color: 'var(--accent)' }}>
+                      {(regionCalcProcess.data.reduce((s, d) => s + d.zhejiang, 0) / regionCalcProcess.data.length).toFixed(3)}
+                    </td>
+                    <td className="num" style={{ fontWeight: 700, color: 'var(--warn)' }}>
+                      {(regionCalcProcess.data.reduce((s, d) => s + d.beijing, 0) / regionCalcProcess.data.length).toFixed(3)}
+                    </td>
+                    <td className="num" style={{ fontWeight: 700, color: 'var(--accent)' }}>
+                      {(regionCalcProcess.data.reduce((s, d) => s + d.liaoning, 0) / regionCalcProcess.data.length).toFixed(3)}
+                    </td>
+                  </tr>
+                  {/* 兜底后行 */}
+                  <tr style={{ background: 'rgba(34,197,94,0.06)' }}>
+                    <td style={{ fontWeight: 700, fontSize: 12 }}>兜底后系数</td>
+                    <td className="num" style={{ fontWeight: 700, color: 'var(--good)' }}>
+                      {Math.max(1, regionCalcProcess.data.reduce((s, d) => s + d.hubei, 0) / regionCalcProcess.data.length).toFixed(3)}
+                    </td>
+                    <td className="num" style={{ fontWeight: 700, color: 'var(--good)' }}>
+                      {Math.max(1, regionCalcProcess.data.reduce((s, d) => s + d.guangdong, 0) / regionCalcProcess.data.length).toFixed(3)}
+                    </td>
+                    <td className="num" style={{ fontWeight: 700, color: 'var(--good)' }}>
+                      {Math.max(1, regionCalcProcess.data.reduce((s, d) => s + d.zhejiang, 0) / regionCalcProcess.data.length).toFixed(3)}
+                    </td>
+                    <td className="num" style={{ fontWeight: 700, color: 'var(--good)' }}>
+                      {Math.max(1, regionCalcProcess.data.reduce((s, d) => s + d.beijing, 0) / regionCalcProcess.data.length).toFixed(3)}
+                    </td>
+                    <td className="num" style={{ fontWeight: 700, color: 'var(--good)' }}>
+                      {Math.max(1, regionCalcProcess.data.reduce((s, d) => s + d.liaoning, 0) / regionCalcProcess.data.length).toFixed(3)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
+              💡 以上展示5个代表性子公司的计算过程，完整24个子公司见下方表格
+            </div>
+          </div>
+        )}
+
         <div style={{ maxHeight: 300, overflowY: 'auto' }}>
           <table className="data-table">
             <thead><tr><th>子公司</th><th className="num">原始均值</th><th className="num">最终系数</th><th>状态</th></tr></thead>
@@ -834,7 +922,7 @@ function RightStep3WarehouseAndWarnings({ tongpeiDone }: { tongpeiDone: boolean 
         <table className="data-table">
           <thead><tr><th>物料</th><th>供应商</th><th className="num">份额%</th><th className="num">MOQ</th></tr></thead>
           <tbody>
-            {['莲雾苹果汁', '安溪铁观音', '老盐糖浆', '冷冻生椰乳'].map((m, i) => (
+            {['安溪铁观音', '莲雾苹果汁', '冷冻生椰乳', '东方美人乌龙茶-A'].map((m, i) => (
               <tr key={i}>
                 <td style={{ fontWeight: 600 }}>{m}</td>
                 <td style={{ color: 'var(--text-muted)' }}>默认（1供应商）</td>
@@ -901,8 +989,8 @@ function RightStep3WarehouseAndWarnings({ tongpeiDone }: { tongpeiDone: boolean 
           <tbody>
             <tr><td style={{ fontWeight: 600 }}>安溪铁观音</td><td className="num">1,539</td><td className="num">76.0</td><td className="num" style={{ fontWeight: 700, color: 'var(--good)' }}>20.3天</td><td><span style={{ color: 'var(--good)' }}>✅</span></td></tr>
             <tr><td style={{ fontWeight: 600 }}>莲雾苹果汁</td><td className="num">8,245</td><td className="num">478.4</td><td className="num" style={{ fontWeight: 700, color: 'var(--good)' }}>17.2天</td><td><span style={{ color: 'var(--good)' }}>✅</span></td></tr>
-            <tr><td style={{ fontWeight: 600 }}>老盐糖浆</td><td className="num">414</td><td className="num">32.5</td><td className="num" style={{ fontWeight: 700, color: 'var(--good)' }}>12.7天</td><td><span style={{ color: 'var(--good)' }}>✅</span></td></tr>
             <tr><td style={{ fontWeight: 600 }}>冷冻生椰乳</td><td className="num">2,035</td><td className="num">172.4</td><td className="num" style={{ fontWeight: 700, color: 'var(--good)' }}>11.8天</td><td><span style={{ color: 'var(--good)' }}>✅</span></td></tr>
+            <tr><td style={{ fontWeight: 600 }}>东方美人乌龙茶-A</td><td className="num">823</td><td className="num">41.2</td><td className="num" style={{ fontWeight: 700, color: 'var(--good)' }}>20.0天</td><td><span style={{ color: 'var(--good)' }}>✅</span></td></tr>
           </tbody>
         </table>
       </div>
@@ -917,7 +1005,7 @@ function RightStep4Output({ productInfo }: { productInfo: NewProductInfo }) {
       <div className="kpi-grid">
         <div className="kpi-card"><div className="kpi-label">新品</div><div className="kpi-value" style={{ fontSize: 16 }}>{productInfo.name}</div></div>
         <div className="kpi-card"><div className="kpi-label">门店数</div><div className="kpi-value">{productInfo.storeCount.toLocaleString()}</div></div>
-        <div className="kpi-card"><div className="kpi-label">物料数</div><div className="kpi-value">7</div></div>
+        <div className="kpi-card"><div className="kpi-label">物料数</div><div className="kpi-value">4</div></div>
         <div className="kpi-card"><div className="kpi-label">预警</div><div className="kpi-value" style={{ color: 'var(--good)' }}>全部通过</div></div>
       </div>
       <div className="card">
