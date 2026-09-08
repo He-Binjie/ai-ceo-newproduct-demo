@@ -260,8 +260,14 @@ function App() {
 
   const sendMessage = () => { if (!inputText.trim() || isTyping) return; handleUserInput(inputText.trim()); };
 
-  // Auto-show welcome on mount
-  useEffect(() => { showWelcome(); }, []);
+  // Auto-show welcome on mount (guard against StrictMode double-run)
+  const welcomeShown = useRef(false);
+  useEffect(() => {
+    if (!welcomeShown.current) {
+      welcomeShown.current = true;
+      showWelcome();
+    }
+  }, []);
 
   const flooredCount = regions.filter(r => r.isFloored).length;
 
