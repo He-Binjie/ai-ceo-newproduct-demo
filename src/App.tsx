@@ -93,7 +93,14 @@ function App() {
   const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
   const [skillSelected, setSkillSelected] = useState(false);
   const [showSkillPopup, setShowSkillPopup] = useState(false);
+  const [rightTab, setRightTab] = useState<Step>(1);
+  const [tongpeiDone, setTongpeiDone] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-switch right tab when step changes
+  useEffect(() => {
+    if (step >= 1) setRightTab(step);
+  }, [step]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -164,9 +171,9 @@ function App() {
         break;
       case 3:
         simulateTyping(
-          `汇总到仓 + 供应商匹配 + 预警检查完成 ✅\n\n🏭 **汇总到仓**（仓店映射9,708条）\n• 北京二级仓：莲雾苹果汁 **13,399** 瓶\n• 详见右侧各仓库汇总\n\n📦 **供应商分配**：默认1供应商，MOQ=1\n\n📊 **预警检查**\n• 备货偏差：**8.6%**（阈值10%）✅ 通过\n• MOQ取整偏差：**0.055%**（阈值5%）✅ 通过\n• 安全库存：全部 **>5天** ✅ 通过\n\n⏰ **T-30 统配比对**\n• 异常统配门店：**12家**（统配>预测）\n• 详见右侧异常清单\n\n💡 **如需调整参数，可直接输入：**\n• "调整区域系数 湖北 1.1"\n• "调整备货系数 莲雾苹果汁 1.2"\n• "调整W1占比 0.06"\n• "安全库存改成7天"\n• "设置供应商 莲雾苹果汁 供应商A 40% MOQ500"\n• 输入"帮助"查看完整参数清单`,
-          ['读取仓店映射Sheet2：9,708条', '按仓库汇总门店物料量', '备货偏差/ MOQ取整/安全库存三道预警', '统配比对：IF(预测-统配<0, 0, 预测-统配)'],
-          [{ label: '✅ 确认，生成方案', type: 'confirm' }, { label: '🔄 调参重跑', type: 'recalculate' }],
+          `汇总到仓 + 供应商匹配 + 预警检查完成 ✅\n\n🏭 **汇总到仓**（仓店映射9,708条）\n• 北京二级仓：莲雾苹果汁 **13,399** 瓶\n• 详见右侧各仓库汇总\n\n📦 **供应商分配**：默认1供应商，MOQ=1\n\n📊 **预警检查**\n• 备货偏差：**8.6%**（阈值10%）✅ 通过\n• MOQ取整偏差：**0.055%**（阈值5%）✅ 通过\n• 安全库存：全部 **>5天** ✅ 通过\n\n⏰ **统配数据（T-30出数）**\n统配数据是否已到？如果已到，我将继续进行统配比对和统配外计算。\n\n💡 **如需调整参数，可直接输入：**\n• "调整区域系数 湖北 1.1"\n• "调整备货系数 莲雾苹果汁 1.2"\n• "调整W1占比 0.06"\n• "安全库存改成7天"\n• 输入"帮助"查看完整参数清单`,
+          ['读取仓店映射Sheet2：9,708条', '按仓库汇总门店物料量', '备货偏差/ MOQ取整/安全库存三道预警'],
+          [{ label: '✅ 统配数据已到，继续', type: 'confirm' }, { label: '⏸️ 统配数据未到，暂停', type: 'skip' }, { label: '🔄 调参重跑', type: 'recalculate' }],
         );
         break;
       case 4:
@@ -196,6 +203,21 @@ function App() {
       setTimeout(() => {
         setIsTyping(false);
         addBotMessage('📋 **历史分仓记录**\n\n最近3次分仓记录：\n• 2026-07-15：栀子花乌龙茶 → 已完成 ✅\n• 2026-06-01：轻因系列夏季版 → 已完成 ✅\n• 2026-04-20：芒果椰椰 → 已完成 ✅\n\n如需查看某次记录详情，请输入品名。');
+      }, 600);
+      return;
+    }
+
+    // 统配数据已到
+    if (text === '统配数据已到' && step === 3 && !tongpeiDone) {
+      setTongpeiDone(true);
+      setIsTyping(true);
+      setTimeout(() => {
+        setIsTyping(false);
+        simulateTyping(
+          `⏰ **T-30 统配比对完成** ✅\n\n📊 **统配比对 — 门店1101010005（北京王府井APM店）**\n| 物料 | 预测 | 统配 | 统配外 | 合计 |\n|------|------|------|--------|------|\n| 安溪铁观音 | 16 | 6 | 10 | 16 |\n| 莲雾苹果汁 | 99 | 35 | 64 | 99 |\n| 冷冻生椰乳 | 32 | 12 | 20 | 32 |\n| 东方美人 | 8 | 0 | 8 | 8 |\n\n⚠️ 发现 **12** 家异常统配门店（统配>预测），已标记。\n\n统配外 = IF(预测-统配<0, 0, 预测-统配)\n\n详见右侧面板。确认后生成最终方案。`,
+          ['读取统配清单', 'IF逻辑：统配外=IF(预测-统配<0, 0, 预测-统配)', '异常统配识别：统配>预测'],
+          [{ label: '✅ 确认，生成方案', type: 'confirm' }],
+        );
       }, 600);
       return;
     }
@@ -374,11 +396,30 @@ function App() {
                           key={i}
                           className={`confirm-btn confirm-btn-${action.type}`}
                           onClick={() => {
-                            if (action.type === 'confirm') confirmStep(step);
+                            if (action.type === 'confirm') {
+                              if (step === 3 && !tongpeiDone) {
+                                // Step 3: 统配数据已到 → 展示统配比对结果
+                                setTongpeiDone(true);
+                                simulateTyping(
+                                  `⏰ **T-30 统配比对完成** ✅\n\n📊 **统配比对 — 门店1101010005（北京王府井APM店）**\n| 物料 | 预测 | 统配 | 统配外 | 合计 |\n|------|------|------|--------|------|\n| 安溪铁观音 | 16 | 6 | 10 | 16 |\n| 莲雾苹果汁 | 99 | 35 | 64 | 99 |\n| 冷冻生椰乳 | 32 | 12 | 20 | 32 |\n| 东方美人 | 8 | 0 | 8 | 8 |\n\n⚠️ 发现 **12** 家异常统配门店（统配>预测），已标记。\n\n统配外 = IF(预测-统配<0, 0, 预测-统配)\n\n详见右侧面板。确认后生成最终方案。`,
+                                  ['读取统配清单', 'IF逻辑：统配外=IF(预测-统配<0, 0, 预测-统配)', '异常统配识别：统配>预测'],
+                                  [{ label: '✅ 确认，生成方案', type: 'confirm' }],
+                                );
+                              } else {
+                                confirmStep(step);
+                              }
+                            }
                             else if (action.type === 'export') handleUserInput('导出Excel');
                             else if (action.type === 'recalculate') addBotMessage('🔄 正在使用新参数重新计算...');
                             else if (action.type === 'notify') addBotMessage('📤 已发送飞书通知 ✅');
-                            else if (action.type === 'skip') { addBotMessage('⏭️ 已跳过，继续下一步。'); confirmStep(step); }
+                            else if (action.type === 'skip') {
+                              if (step === 3) {
+                                addBotMessage('⏸️ **统配数据未到，流程暂停**\n\n当前已完成：\n• ✅ 汇总到仓\n• ✅ 供应商分配\n• ✅ 三道预警检查\n\n等待统配数据到达后，输入"统配数据已到"或点击按钮继续。');
+                              } else {
+                                addBotMessage('⏭️ 已跳过，继续下一步。');
+                                confirmStep(step);
+                              }
+                            }
                             else if (action.type === 'edit') addBotMessage(`✏️ 请在对话中输入修改指令，或输入"返回修改"。`);
                           }}
                           disabled={isTyping}
@@ -452,14 +493,40 @@ function App() {
           </div>
         </div>
 
-        {/* Right: Data Display Only */}
+        {/* Right: Data Display Only with Tabs */}
         <div className="right-panel">
           {!selectedProduct && <RightEmptyState />}
-          {selectedProduct && step === 0 && <RightStep0ProductInfo productInfo={productInfo} />}
-          {step === 1 && <RightStep1CupForecast productInfo={productInfo} />}
-          {step === 2 && <RightStep2CoefficientsAndBOM regions={regions} flooredCount={flooredCount} materials={materials} productInfo={productInfo} />}
-          {step === 3 && <RightStep3WarehouseAndWarnings />}
-          {step === 4 && <RightStep4Output productInfo={productInfo} />}
+          {selectedProduct && (
+            <>
+              {/* Tab Navigation */}
+              <div className="right-tabs">
+                {STEP_LABELS.slice(1).map((label, i) => {
+                  const tabStep = (i + 1) as Step;
+                  const isActive = rightTab === tabStep;
+                  const isCompleted = step > tabStep;
+                  const isAccessible = step >= tabStep;
+                  return (
+                    <button
+                      key={tabStep}
+                      className={`right-tab ${isActive ? 'active' : ''} ${isCompleted ? 'completed' : ''} ${!isAccessible ? 'disabled' : ''}`}
+                      onClick={() => { if (isAccessible) setRightTab(tabStep); }}
+                      disabled={!isAccessible}
+                    >
+                      <span className="right-tab-num">{isCompleted ? '✓' : tabStep}</span>
+                      <span className="right-tab-label">{label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {/* Tab Content */}
+              <div className="right-tab-content">
+                {rightTab === 1 && <RightStep1CupForecast productInfo={productInfo} />}
+                {rightTab === 2 && <RightStep2CoefficientsAndBOM regions={regions} flooredCount={flooredCount} materials={materials} productInfo={productInfo} />}
+                {rightTab === 3 && <RightStep3WarehouseAndWarnings tongpeiDone={tongpeiDone} />}
+                {rightTab === 4 && <RightStep4Output productInfo={productInfo} />}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -506,24 +573,6 @@ function RightEmptyState() {
       </div>
       <div className="empty-t1">新品分仓备货</div>
       <div className="empty-t2">在左侧对话中选择新品开始分仓<br/>数据将在此展示</div>
-    </div>
-  );
-}
-
-function RightStep0ProductInfo({ productInfo }: { productInfo: NewProductInfo }) {
-  return (
-    <div className="animate-in">
-      <div className="panel-title"><span className="step-badge">已选择</span>{productInfo.name}</div>
-      <div className="card">
-        <div className="card-title">📋 新品基础信息</div>
-        <div className="data-source-tag">数据来源：飞书多维表格</div>
-        <div className="info-grid">
-          <div className="info-item"><span className="info-label">新品名称</span><span className="info-value">{productInfo.name}</span></div>
-          <div className="info-item"><span className="info-label">上市日期</span><span className="info-value">{productInfo.launchDate}</span></div>
-          <div className="info-item"><span className="info-label">上新范围</span><span className="info-value">{productInfo.scope}</span></div>
-          <div className="info-item"><span className="info-label">产品等级</span><span className="info-value">A级</span></div>
-        </div>
-      </div>
     </div>
   );
 }
@@ -670,7 +719,7 @@ W4 = 1150.49 × 1.2 × 0.012544 × 7 ÷ 11.41 × 1.0 = 10.62
   );
 }
 
-function RightStep3WarehouseAndWarnings() {
+function RightStep3WarehouseAndWarnings({ tongpeiDone }: { tongpeiDone: boolean }) {
   return (
     <div className="animate-in">
       <div className="panel-title"><span className="step-badge">Step 3</span>汇总到仓 + 供应商 + 预警</div>
@@ -735,20 +784,30 @@ function RightStep3WarehouseAndWarnings() {
         </div>
       </div>
 
-      {/* 统配比对 */}
-      <div className="card">
-        <div className="card-title">⏰ T-30 统配比对 — 门店1101010005</div>
-        <table className="data-table">
-          <thead><tr><th>物料</th><th className="num">预测</th><th className="num">统配</th><th className="num">统配外</th><th className="num">合计</th><th>状态</th></tr></thead>
-          <tbody>
-            <tr><td style={{ fontWeight: 600 }}>安溪铁观音</td><td className="num">16</td><td className="num">6</td><td className="num">10</td><td className="num" style={{ fontWeight: 700 }}>16</td><td><span style={{ color: 'var(--good)' }}>✅</span></td></tr>
-            <tr><td style={{ fontWeight: 600 }}>莲雾苹果汁</td><td className="num">99</td><td className="num">35</td><td className="num">64</td><td className="num" style={{ fontWeight: 700 }}>99</td><td><span style={{ color: 'var(--good)' }}>✅</span></td></tr>
-            <tr><td style={{ fontWeight: 600 }}>老盐糖浆</td><td className="num">6</td><td className="num">3</td><td className="num">3</td><td className="num" style={{ fontWeight: 700 }}>6</td><td><span style={{ color: 'var(--good)' }}>✅</span></td></tr>
-            <tr><td style={{ fontWeight: 600 }}>冷冻生椰乳</td><td className="num">32</td><td className="num">12</td><td className="num">20</td><td className="num" style={{ fontWeight: 700 }}>32</td><td><span style={{ color: 'var(--good)' }}>✅</span></td></tr>
-          </tbody>
-        </table>
-        <p style={{ fontSize: 12, color: 'var(--warn)', marginTop: 8 }}>⚠️ 发现 <strong>12</strong> 家异常统配门店（统配&gt;预测）</p>
-      </div>
+      {/* 统配比对 - 仅在统配数据已到后展示 */}
+      {tongpeiDone ? (
+        <div className="card">
+          <div className="card-title">⏰ T-30 统配比对 — 门店1101010005</div>
+          <table className="data-table">
+            <thead><tr><th>物料</th><th className="num">预测</th><th className="num">统配</th><th className="num">统配外</th><th className="num">合计</th><th>状态</th></tr></thead>
+            <tbody>
+              <tr><td style={{ fontWeight: 600 }}>安溪铁观音</td><td className="num">16</td><td className="num">6</td><td className="num">10</td><td className="num" style={{ fontWeight: 700 }}>16</td><td><span style={{ color: 'var(--good)' }}>✅</span></td></tr>
+              <tr><td style={{ fontWeight: 600 }}>莲雾苹果汁</td><td className="num">99</td><td className="num">35</td><td className="num">64</td><td className="num" style={{ fontWeight: 700 }}>99</td><td><span style={{ color: 'var(--good)' }}>✅</span></td></tr>
+              <tr><td style={{ fontWeight: 600 }}>老盐糖浆</td><td className="num">6</td><td className="num">3</td><td className="num">3</td><td className="num" style={{ fontWeight: 700 }}>6</td><td><span style={{ color: 'var(--good)' }}>✅</span></td></tr>
+              <tr><td style={{ fontWeight: 600 }}>冷冻生椰乳</td><td className="num">32</td><td className="num">12</td><td className="num">20</td><td className="num" style={{ fontWeight: 700 }}>32</td><td><span style={{ color: 'var(--good)' }}>✅</span></td></tr>
+            </tbody>
+          </table>
+          <p style={{ fontSize: 12, color: 'var(--warn)', marginTop: 8 }}>⚠️ 发现 <strong>12</strong> 家异常统配门店（统配&gt;预测）</p>
+        </div>
+      ) : (
+        <div className="card" style={{ borderColor: 'var(--warn)', background: 'rgba(245,158,11,0.04)' }}>
+          <div className="card-title" style={{ color: 'var(--warn)' }}>⏰ 统配数据（T-30出数）</div>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.8 }}>
+            统配数据尚未到达，等待T-30出数后将自动进行统配比对。<br/>
+            统配外 = IF(预测-统配&lt;0, 0, 预测-统配)
+          </p>
+        </div>
+      )}
 
       {/* 安全库存明细 */}
       <div className="card">
