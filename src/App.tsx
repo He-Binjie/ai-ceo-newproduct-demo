@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import './styles.css';
 import type { ChatMessage, NewProductInfo, BOMMaterial, RegionCoefficient, ConfirmAction } from './types';
-import { mockProduct, mockMaterials, mockRegionCoefficients, historicalProducts, historicalProductsDetail, mockStoreSamples, nationalMaterialSummary, warehouseSummarySample, newProductList } from './data/mock';
+import { mockProduct, mockMaterials, mockRegionCoefficients, historicalProducts, mockStoreSamples, nationalMaterialSummary, warehouseSummarySample, newProductList } from './data/mock';
 import { parseIntent } from './engine/nlu';
 
 // 简化为5步
@@ -15,6 +15,71 @@ const SKILLS = [
 ];
 
 type Step = 0 | 1 | 2 | 3 | 4;
+
+// 参数调整解析器
+function parseParameterAdjustment(text: string): { response: string; thinking: string[] } | null {
+  const lower = text.toLowerCase();
+
+  // 区域系数调整
+  const regionMatch = text.match(/(?:调整|修改|设置)\s*区域系数\s*(\S+)\s+([\d.]+)/);
+  if (regionMatch) {
+    const [, subsidiary, value] = regionMatch;
+    return {
+      response: `✅ 已调整区域系数\n\n• **${subsidiary}**：→ **${value}**\n\n修改已记录，确认后将在下一步计算中使用新系数。\n\n💡 你还可以继续调整：\n• "调整区域系数 广东 1.05"\n• "调整备货系数 莲雾苹果汁 1.2"\n• "调整W1占比 0.06"\n• "安全库存改成7天"`,
+      thinking: [`修改区域系数：${subsidiary} → ${value}`],
+    };
+  }
+
+  // 备货系数调整
+  const stockMatch = text.match(/(?:调整|修改|设置)\s*备货系数\s*(\S+)\s+([\d.]+)/);
+  if (stockMatch) {
+    const [, material, value] = stockMatch;
+    return {
+      response: `✅ 已调整备货系数\n\n• **${material}**：→ **${value}**\n\n修改已记录，确认后将在下一步计算中使用新系数。\n\n💡 你还可以继续调整其他参数。`,
+      thinking: [`修改备货系数：${material} → ${value}`],
+    };
+  }
+
+  // W1-W4占比调整
+  const wMatch = text.match(/(?:调整|修改|设置)\s*(W[1-4])\s*占比\s+([\d.]+)/);
+  if (wMatch) {
+    const [, week, value] = wMatch;
+    return {
+      response: `✅ 已调整${week}占比\n\n• **${week}**：→ **${value}**\n\n⚠️ W1-W4为成品维度参数，修改后所有物料同步生效。\n\n修改已记录，确认后将在下一步计算中使用新值。`,
+      thinking: [`修改${week}占比 → ${value}（成品维度，全物料生效）`],
+    };
+  }
+
+  // 安全库存天数调整
+  const safetyMatch = text.match(/(?:安全库存|安库)\s*(?:改成|调整为|设置为?)\s*(\d+)\s*天?/);
+  if (safetyMatch) {
+    const [, days] = safetyMatch;
+    return {
+      response: `✅ 已调整安全库存天数\n\n• 安全库存：5天 → **${days}天**\n\n修改已记录，确认后将在安全库存校验中使用新阈值。`,
+      thinking: [`修改安全库存天数：5天 → ${days}天`],
+    };
+  }
+
+  // 供应商设置
+  const supplierMatch = text.match(/(?:设置|调整)\s*供应商\s+(\S+)\s+(\S+)\s+(\d+)%?\s*(?:MOQ\s*)?(\d+)?/i);
+  if (supplierMatch) {
+    const [, material, supplier, share, moq] = supplierMatch;
+    return {
+      response: `✅ 已设置供应商信息\n\n• **${material}**\n  - 供应商：${supplier}\n  - 份额：${share}%\n  - MOQ：${moq || '1（默认）'}\n\n💡 份额之和必须=100%，可继续添加其他供应商。`,
+      thinking: [`设置供应商：${material} → ${supplier} ${share}% MOQ=${moq || 1}`],
+    };
+  }
+
+  // 帮助/可调参数列表
+  if (lower.includes('可调') || lower.includes('调参') || lower.includes('修改参数') || lower.includes('帮助') || lower.includes('help')) {
+    return {
+      response: `📋 **可调整参数清单**\n\n以下参数支持在对话中直接输入修改：\n\n**1. 区域系数**（分公司维度）\n• 格式：\`调整区域系数 湖北 1.1\`\n• 说明：修改某子公司的区域系数\n\n**2. 备货系数**（物料维度）\n• 格式：\`调整备货系数 莲雾苹果汁 1.2\`\n• 说明：修改某物料的备货系数\n\n**3. W1-W4占比**（成品维度）\n• 格式：\`调整W1占比 0.06\`\n• 说明：修改后所有物料同步生效\n\n**4. 安全库存天数**\n• 格式：\`安全库存改成7天\`\n• 说明：默认5天\n\n**5. 供应商信息**\n• 格式：\`设置供应商 莲雾苹果汁 供应商A 40% MOQ500\`\n• 说明：份额之和必须=100%`,
+      thinking: ['展示可调参数清单'],
+    };
+  }
+
+  return null;
+}
 
 function App() {
   const [step, setStep] = useState<Step>(0);
@@ -92,14 +157,14 @@ function App() {
         break;
       case 2:
         simulateTyping(
-          `系数修正 + BOM拆解完成 ✅\n\n📐 **区域系数**（${historicalProducts.length}个历史品均值）\n• 24个子公司：**8个兜底为1.0**，最高 **湖北(1.196)**\n• 💡 AI建议：选择相似度≥80%的 **${historicalProductsDetail.filter(p => p.similarity >= 0.80).length}个历史品** 可使系数更精准\n\n📦 **BOM拆解 → 物料需求**（${materials.filter(m=>m.selected).length}种核心物料）\n• 安溪铁观音、莲雾苹果汁、冷冻生椰乳 等\n• ⚠️ 东方美人乌龙茶-A 编码为空（新品建档未完成）\n\n🧮 **物料量计算示例**（门店1101010005 × 莲雾苹果汁）\n\`\`\`\nW1 = 1077.92 × 1.2 × 0.05 × 7 ÷ 11.41 × 1.0 = 39.67\n预测总量 = Roundup(W1+W2+W3+W4) = 99 ✅\n\`\`\`\n\n全部计算公式和区域系数详见右侧面板。`,
-          ['计算24个子公司区域系数（兜底<1.0→1.0）', 'BOM拆解：7种物料 × W1-W4', '核心公式：逐门店逐物料计算', 'Roundup向上取整 + 效期校验'],
+          `系数修正 + BOM拆解完成 ✅\n\n📐 **区域系数**（${historicalProducts.length}个历史品均值）\n• 24个子公司：**8个兜底为1.0**，最高 **湖北(1.196)**\n\n💡 **AI推荐：选择以下15个历史品（相似度≥80%）可使系数更精准**\n\n| 品名 | 品类 | 相似度 | 推荐理由 |\n|------|------|--------|----------|\n| 夏梦玫珑 | 果茶 | 92% | 果茶品类最高相似，区域分布一致 |\n| 小森林柚子 | 果茶 | 91% | 果茶+夏季上新，杯量曲线高度吻合 |\n| 肉桂橙大红袍 | 特调茶 | 90% | 特调茶基底相同，区域系数分布接近 |\n| 晴天罗勒桃 | 果茶 | 89% | 果茶品类，门店覆盖度相似 |\n| 白雾红尘 | 特调茶 | 88% | 特调茶经典品，达标率稳定 |\n| 诶？橙柚康普 | 果茶 | 88% | 果茶+创新品类，区域表现参考性强 |\n| 草莓云顶大红袍 | 特调茶 | 87% | 同系列品，区域系数方差小 |\n| 芒果云顶大红袍 | 特调茶 | 86% | 同系列品，达标率均值高 |\n| 嘿！菠萝马黛 | 果茶 | 86% | 果茶品类，夏季上新节奏一致 |\n| 归云南·云漫普洱 | 特调茶 | 85% | 特调茶+茶基底相似 |\n| 蜜瓜开心果椰 | 特调茶 | 84% | 特调茶+复合风味，区域分布参考 |\n| 龙井玄米酪 | 特调茶 | 83% | 特调茶品类，达标率中位数接近 |\n| 归云南·云卷松风 | 特调茶 | 82% | 同系列品，区域表现一致 |\n| 耶～抹茶龙井 | 特调茶 | 81% | 茶基底相似，区域系数参考 |\n| 归云南 | 特调茶 | 80% | 同系列基准品，兜底参考 |\n\n排除轻因系列（4个，相似度63%-70%，品类差异大）。\n\n📦 **BOM拆解 → 物料需求**（${materials.filter(m=>m.selected).length}种核心物料）\n详见右侧面板。\n\n🧮 **物料量计算示例**（门店1101010005 × 莲雾苹果汁）\n\`\`\`\nW1 = 1077.92 × 1.2 × 0.05 × 7 ÷ 11.41 × 1.1 = 43.64\n预测总量 = Roundup(W1+W2+W3+W4) ✅\n\`\`\`\n\n全部计算公式和区域系数详见右侧面板。`,
+          ['计算24个子公司区域系数（兜底<1.0→1.0）', 'BOM拆解：4种物料 × W1-W4', '核心公式：逐门店逐物料计算', 'Roundup向上取整 + 效期校验'],
           [{ label: '✅ 确认，继续', type: 'confirm' }, { label: '✏️ 使用AI推荐子集', type: 'edit' }],
         );
         break;
       case 3:
         simulateTyping(
-          `汇总到仓 + 供应商匹配 + 预警检查完成 ✅\n\n🏭 **汇总到仓**（仓店映射9,708条）\n• 北京二级仓：莲雾苹果汁 **13,399** 瓶\n• 详见右侧各仓库汇总\n\n📦 **供应商分配**：默认1供应商，MOQ=1\n\n📊 **预警检查**\n• 备货偏差：**8.6%**（阈值10%）✅ 通过\n• MOQ取整偏差：**0.055%**（阈值5%）✅ 通过\n• 安全库存：全部 **>5天** ✅ 通过\n\n⏰ **T-30 统配比对**\n• 异常统配门店：**12家**（统配>预测）\n• 详见右侧异常清单`,
+          `汇总到仓 + 供应商匹配 + 预警检查完成 ✅\n\n🏭 **汇总到仓**（仓店映射9,708条）\n• 北京二级仓：莲雾苹果汁 **13,399** 瓶\n• 详见右侧各仓库汇总\n\n📦 **供应商分配**：默认1供应商，MOQ=1\n\n📊 **预警检查**\n• 备货偏差：**8.6%**（阈值10%）✅ 通过\n• MOQ取整偏差：**0.055%**（阈值5%）✅ 通过\n• 安全库存：全部 **>5天** ✅ 通过\n\n⏰ **T-30 统配比对**\n• 异常统配门店：**12家**（统配>预测）\n• 详见右侧异常清单\n\n💡 **如需调整参数，可直接输入：**\n• "调整区域系数 湖北 1.1"\n• "调整备货系数 莲雾苹果汁 1.2"\n• "调整W1占比 0.06"\n• "安全库存改成7天"\n• "设置供应商 莲雾苹果汁 供应商A 40% MOQ500"\n• 输入"帮助"查看完整参数清单`,
           ['读取仓店映射Sheet2：9,708条', '按仓库汇总门店物料量', '备货偏差/ MOQ取整/安全库存三道预警', '统配比对：IF(预测-统配<0, 0, 预测-统配)'],
           [{ label: '✅ 确认，生成方案', type: 'confirm' }, { label: '🔄 调参重跑', type: 'recalculate' }],
         );
@@ -138,6 +203,17 @@ function App() {
     const matchedProduct = newProductList.find(p => p.name === text);
     if (matchedProduct) {
       selectProduct(matchedProduct.id);
+      return;
+    }
+
+    // 参数调整识别
+    const paramResult = parseParameterAdjustment(text);
+    if (paramResult) {
+      setIsTyping(true);
+      setTimeout(() => {
+        setIsTyping(false);
+        addBotMessage(paramResult.response, paramResult.thinking);
+      }, 600);
       return;
     }
 
@@ -528,18 +604,23 @@ function RightStep2CoefficientsAndBOM({ regions, flooredCount, materials, produc
         <div className="card-title">📦 BOM物料清单（{materials.filter(m => m.selected).length}种核心物料）</div>
         <div className="data-source-tag">数据来源：飞书多维表格「新品BOM」表</div>
         <table className="data-table">
-          <thead><tr><th>原材料名称</th><th>编码</th><th>规格</th><th className="num">单位用量</th><th className="num">备货系数</th><th className="num">效期</th><th className="num">W1杯占</th><th className="num">W2杯占</th></tr></thead>
+          <thead><tr><th>原材料名称</th><th>原材料编码</th><th>规格型号</th><th>单位</th><th className="num">单位用量</th><th>用量单位</th><th className="num">开封效期</th><th className="num">备货系数</th><th className="num">损耗率</th><th className="num">W1杯占</th><th className="num">W2杯占</th><th className="num">W3杯占</th><th className="num">W4杯占</th></tr></thead>
           <tbody>
             {materials.map(m => (
               <tr key={m.id} style={{ opacity: m.selected ? 1 : 0.5 }}>
                 <td style={{ fontWeight: 600 }}>{m.materialName}</td>
                 <td style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{m.materialCode || <span style={{ color: 'var(--warn)' }}>⚠️空</span>}</td>
                 <td style={{ fontSize: 11 }}>{m.spec}</td>
-                <td className="num">{m.unitUsage}{m.usageUnit}</td>
-                <td className="num">{m.stockCoefficient}</td>
+                <td>{m.unit}</td>
+                <td className="num">{m.unitUsage}</td>
+                <td>{m.usageUnit}</td>
                 <td className="num">{m.shelfLifeDays}天</td>
+                <td className="num">{m.stockCoefficient}</td>
+                <td className="num">{(m.lossRate * 100).toFixed(0)}%</td>
                 <td className="num">{m.cupRatioW1}</td>
                 <td className="num">{m.cupRatioW2}</td>
+                <td className="num">{m.cupRatioW3}</td>
+                <td className="num">{m.cupRatioW4}</td>
               </tr>
             ))}
           </tbody>

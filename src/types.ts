@@ -15,6 +15,7 @@ export interface BOMRecord {
   usageUnit: string;         // 用量单位 (g/ml)
   shelfLifeDays: number;     // 原材料开封效期（天）
   stockCoefficient: number;  // 原材料备货系数
+  lossRate: number;          // 损耗率
   // W1-W4杯占比（每行冗余，实际值相同）
   cupRatioW1: number;        // 第1周新品杯占比
   cupRatioW2: number;        // 第2周新品杯占比
