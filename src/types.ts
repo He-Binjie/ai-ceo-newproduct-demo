@@ -1,52 +1,76 @@
-// 新品分仓备货 Demo 类型定义
+// 新品分仓备货 Demo 类型定义（V3 - 对齐向磊飞书多维表格模板）
 
-export interface NewProductInfo {
-  name: string;
-  launchDate: string;
-  firstWeekDailyCups: number;
-  firstMonthDailyCups: number;
-  scope: '全国' | '区域';
-  scopeRegions?: string[];
-}
-
-export interface BOMMaterial {
+// ===== 飞书多维表格：新品BOM（1张扁平表，每行=一个新品下的一个原材料） =====
+export interface BOMRecord {
   id: string;
-  name: string;
-  spec: string;
-  purchaseUnit: string;
-  unitConversion: number; // g per unit
-  retentionRate: number; // 保留率
-  applicationRateW1: number;
-  applicationRateW2: number;
-  applicationRateW3: number;
-  applicationRateW4: number;
-  ratioW1: number;
-  ratioW2: number;
-  ratioW3: number;
-  ratioW4: number;
-  stockCoefficient: number;
-  shelfLifeMinWeeks: number;
-  moq: number;
+  // 新品维度字段（每行冗余）
+  productName: string;       // 新品名称
+  launchDate: string;        // 上新日
+  // 物料维度字段
+  materialName: string;      // 原材料名称
+  materialCode: string;      // 原材料编码（可能为空）
+  spec: string;              // 规格型号
+  unit: string;              // 单位
+  unitUsage: number;         // 单位用量
+  usageUnit: string;         // 用量单位 (g/ml)
+  shelfLifeDays: number;     // 原材料开封效期（天）
+  stockCoefficient: number;  // 原材料备货系数
+  // W1-W4杯占比（每行冗余，实际值相同）
+  cupRatioW1: number;        // 第1周新品杯占比
+  cupRatioW2: number;        // 第2周新品杯占比
+  cupRatioW3: number;        // 第3周新品杯占比
+  cupRatioW4: number;        // 第4周新品杯占比
+  // UI状态
   selected: boolean;
 }
 
-export interface RegionCoefficient {
-  region: string;
-  subsidiary: string;
+// ===== 系统自动获取的数据（非表格读取） =====
+export interface SystemData {
+  storeCount: number;          // 在营门店数（成品销售报表，滚动30天）
+  firstWeekDailyCups: number;  // 大盘预测首周日均（上游预测系统）
+  firstMonthDailyCups: number; // 大盘预测首月日均（上游预测系统）
+  totalSalesMay: number;       // 全国5月总销量（成品销售报表）
+}
+
+// 兼容旧代码
+export type NewProductInfo = {
+  name: string;
+  launchDate: string;
+  scope: string;
   storeCount: number;
-  salesRatio: number;
-  nationalAvgRatio: number;
-  coefficient: number; // max(salesRatio / nationalAvgRatio, 1.0)
+  firstWeekDailyCups: number;
+  firstMonthDailyCups: number;
+  totalSalesMay: number;
+  cupRatioW1: number;
+  cupRatioW2: number;
+  cupRatioW3: number;
+  cupRatioW4: number;
+};
+
+export type BOMMaterial = BOMRecord;
+
+export interface RegionCoefficient {
+  subsidiary: string;
+  rawValue: number;
+  coefficient: number;
+  isFloored: boolean;
+  editable: boolean;
 }
 
 export interface StoreForecast {
   storeId: string;
   storeName: string;
-  region: string;
+  warehouse: string;
   subsidiary: string;
-  storeCount: number;
-  salesRatio: number;
+  province: string;
+  city: string;
+  maySales: number;
+  mayDailyAvg: number;
+  firstWeekDaily: number;
+  monthDaily: number;
   regionCoeff: number;
+  salesRatio: number;
+  isFloorProtected: boolean;
   w1Cups: number;
   w2Cups: number;
   w3Cups: number;
@@ -62,18 +86,40 @@ export interface StoreForecast {
 export interface WarehouseAggregation {
   warehouseId: string;
   warehouseName: string;
+  warehouseType: '一级仓' | '二级仓';
   coveredStores: number;
-  totalForecast: number;
+  materials: WarehouseMaterialAgg[];
+}
+
+export interface WarehouseMaterialAgg {
+  materialName: string;
+  forecastQty: number;
   allocationQty: number;
-  extraStock: number; // max(forecast - allocation, 0)
+  extraStock: number;
+  total: number;
+  orderQty: number;
   sellableDays: number;
-  moqRounded: number;
-  supplier: string;
+}
+
+export interface SupplierAllocation {
+  materialName: string;
+  supplierName: string;
+  share: number;
+  moq: number;
+  allocatedQty: number;
+  orderQty: number;
+}
+
+export interface UnifiedDistribution {
+  storeId: string;
+  storeName: string;
+  warehouse: string;
+  materials: { name: string; qty: number }[];
 }
 
 export interface Warning {
   level: 'red' | 'yellow' | 'green';
-  type: '备货预警' | 'MOQ取整预警' | '安全库存预警';
+  type: string;
   message: string;
   deviation: number;
   threshold: number;
@@ -86,18 +132,25 @@ export interface ChatMessage {
   content: string;
   timestamp: Date;
   thinking?: string[];
+  confirmActions?: ConfirmAction[];
 }
 
-export type WizardStep = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8;
+export interface ConfirmAction {
+  label: string;
+  type: 'confirm' | 'edit' | 'skip' | 'recalculate' | 'export' | 'notify';
+  value?: string;
+}
+
+export type WizardStep = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 
 export interface WizardState {
   currentStep: WizardStep;
-  productInfo: NewProductInfo | null;
-  materials: BOMMaterial[];
-  selectedMaterials: string[];
+  bomRecords: BOMRecord[];
+  systemData: SystemData;
   regionCoefficients: RegionCoefficient[];
   storeForecasts: StoreForecast[];
   warehouseAggregations: WarehouseAggregation[];
+  supplierAllocations: SupplierAllocation[];
   warnings: Warning[];
   confirmed: boolean;
 }

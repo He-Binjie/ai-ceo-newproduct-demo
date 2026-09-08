@@ -1176,3 +1176,137 @@ body {
     display: none;
   }
 }
+
+/* ===== V2: 12步交互新增样式 ===== */
+
+/* 确认按钮组 */
+.confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+.confirm-btn {
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border-main);
+  background: var(--bg-card);
+  color: var(--text-main);
+  transition: all 0.2s;
+}
+.confirm-btn:hover { background: var(--bg-hover); }
+.confirm-btn-confirm { border-color: var(--good); color: var(--good); }
+.confirm-btn-confirm:hover { background: rgba(34,197,94,0.08); }
+.confirm-btn-edit { border-color: var(--accent-bright); color: var(--accent); }
+.confirm-btn-edit:hover { background: var(--accent-light); }
+.confirm-btn-skip { border-color: var(--warn); color: var(--warn); }
+.confirm-btn-recalculate { border-color: var(--purple); color: var(--purple); }
+.confirm-btn-export { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+.confirm-btn-notify { border-color: var(--info); color: var(--info); }
+
+/* 信息网格 */
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+.info-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  background: var(--bg-secondary);
+  border-radius: 6px;
+  font-size: 12px;
+}
+.info-label { color: var(--text-muted); }
+.info-value { font-weight: 600; color: var(--text-main); }
+.info-value.highlight { color: var(--accent); font-size: 14px; }
+.info-value.editable { color: var(--accent-bright); }
+.edit-hint {
+  font-size: 10px;
+  color: var(--accent-bright);
+  background: var(--accent-light);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+/* 数据来源标签 */
+.data-source-tag {
+  display: inline-block;
+  font-size: 10px;
+  color: var(--accent);
+  background: var(--accent-light);
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+
+/* Step 0 新品选择卡片 */
+.product-select-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.product-select-card {
+  padding: 14px 16px;
+  border: 1px solid var(--border-main);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--bg-card);
+}
+.product-select-card:hover {
+  border-color: var(--accent-bright);
+  background: var(--accent-light);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(27,77,122,0.1);
+}
+.product-select-card.selected {
+  border-color: var(--accent);
+  background: var(--accent-light);
+  box-shadow: 0 0 0 2px var(--accent-bright);
+}
+.product-select-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.product-select-name {
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text-main);
+}
+.product-select-status {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+.status-active {
+  background: rgba(34,197,94,0.1);
+  color: var(--good);
+}
+.status-planned {
+  background: rgba(96,165,250,0.1);
+  color: var(--info);
+}
+.product-select-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.product-select-stage {
+  font-size: 11px;
+  color: var(--accent-bright);
+  font-weight: 500;
+}
