@@ -133,6 +133,7 @@ export interface ChatMessage {
   timestamp: Date;
   thinking?: string[];
   confirmActions?: ConfirmAction[];
+  chips?: string[];
 }
 
 export interface ConfirmAction {
