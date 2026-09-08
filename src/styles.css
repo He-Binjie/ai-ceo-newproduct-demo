@@ -373,6 +373,19 @@ body {
   white-space: pre-wrap;
 }
 
+.formula-block {
+  background: #0b1f33;
+  color: #9fd0ef;
+  padding: 14px;
+  border-radius: var(--radius-lg);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.7;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  margin: 0;
+}
+
 /* ===== Chips Row ===== */
 .chips-row {
   display: flex;
