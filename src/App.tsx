@@ -140,7 +140,7 @@ function App() {
         `你好！我是 **AI CEO 新品分仓助手** 📦\n\n基于历史新品数据预测新品首周/首月全国杯量，通过区域系数和备货系数修正后，经BOM拆解为物料需求，按仓库覆盖门店分配至各仓库，再匹配供应商产能生成采购建议单。\n\n请选择操作开始：`,
         [],
         [],
-        ['开始新品分仓', '查看当前上新周期新品', '查看历史分仓记录'],
+        ['开始新品分仓'],
       );
     }, 300);
   };
@@ -520,7 +520,7 @@ function App() {
               </div>
               {/* Tab Content */}
               <div className="right-tab-content">
-                {rightTab === 1 && <RightStep1CupForecast productInfo={productInfo} />}
+                {rightTab === 1 && <RightStep1CupForecast productInfo={productInfo} materials={materials} />}
                 {rightTab === 2 && <RightStep2CoefficientsAndBOM regions={regions} flooredCount={flooredCount} materials={materials} productInfo={productInfo} />}
                 {rightTab === 3 && <RightStep3WarehouseAndWarnings tongpeiDone={tongpeiDone} />}
                 {rightTab === 4 && <RightStep4Output productInfo={productInfo} />}
@@ -577,10 +577,53 @@ function RightEmptyState() {
   );
 }
 
-function RightStep1CupForecast({ productInfo }: { productInfo: NewProductInfo }) {
+function RightStep1CupForecast({ productInfo, materials }: { productInfo: NewProductInfo; materials: BOMMaterial[] }) {
   return (
     <div className="animate-in">
       <div className="panel-title"><span className="step-badge">Step 1</span>预测杯量</div>
+
+      {/* 新品基础信息表（飞书多维表格） */}
+      <div className="card">
+        <div className="card-title">📋 新品基础信息表</div>
+        <div className="data-source-tag">数据来源：飞书多维表格「新品BOM」表</div>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
+          新品名称：<strong>{productInfo.name}</strong> ｜ 上新日：<strong>{productInfo.launchDate}</strong> ｜ 共 <strong>{materials.length}</strong> 种原材料
+        </p>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>新品名称</th><th>上新日</th><th>原材料名称</th><th>原材料编码</th><th>规格型号</th><th>单位</th>
+                <th className="num">单位用量</th><th>用量单位</th><th className="num">开封效期</th><th className="num">备货系数</th><th className="num">损耗率</th>
+                <th className="num">W1杯占</th><th className="num">W2杯占</th><th className="num">W3杯占</th><th className="num">W4杯占</th>
+              </tr>
+            </thead>
+            <tbody>
+              {materials.map(m => (
+                <tr key={m.id}>
+                  <td style={{ fontWeight: 600 }}>{m.productName}</td>
+                  <td style={{ fontSize: 11 }}>{m.launchDate}</td>
+                  <td style={{ fontWeight: 600 }}>{m.materialName}</td>
+                  <td style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{m.materialCode || <span style={{ color: 'var(--warn)' }}>⚠️空</span>}</td>
+                  <td style={{ fontSize: 11 }}>{m.spec}</td>
+                  <td>{m.unit}</td>
+                  <td className="num">{m.unitUsage}</td>
+                  <td>{m.usageUnit}</td>
+                  <td className="num">{m.shelfLifeDays}天</td>
+                  <td className="num">{m.stockCoefficient}</td>
+                  <td className="num">{(m.lossRate * 100).toFixed(0)}%</td>
+                  <td className="num">{m.cupRatioW1}</td>
+                  <td className="num">{m.cupRatioW2}</td>
+                  <td className="num">{m.cupRatioW3}</td>
+                  <td className="num">{m.cupRatioW4}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 系统自动获取数据 */}
       <div className="kpi-grid">
         <div className="kpi-card"><div className="kpi-label">在营门店</div><div className="kpi-value">{productInfo.storeCount.toLocaleString()}<span className="kpi-unit">家</span></div></div>
         <div className="kpi-card"><div className="kpi-label">首周日均</div><div className="kpi-value">{productInfo.firstWeekDailyCups}<span className="kpi-unit">杯</span></div></div>
