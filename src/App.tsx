@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import './styles.css';
 import type { ChatMessage, NewProductInfo, BOMMaterial, RegionCoefficient, ConfirmAction } from './types';
-import { mockProduct, mockMaterials, mockRegionCoefficients, historicalProducts, mockStoreSamples, nationalMaterialSummary, warehouseSummarySample, newProductList, regionCalcProcess } from './data/mock';
+import { mockProduct, mockMaterials, mockRegionCoefficients, historicalProducts, historicalProductsDetail, mockStoreSamples, nationalMaterialSummary, warehouseSummarySample, newProductList } from './data/mock';
 import { parseIntent } from './engine/nlu';
 
 // 简化为5步
@@ -25,8 +25,8 @@ function parseParameterAdjustment(text: string): { response: string; thinking: s
   if (regionMatch) {
     const [, subsidiary, value] = regionMatch;
     return {
-      response: `✅ 已调整区域系数\n\n• **${subsidiary}**：→ **${value}**\n\n修改已记录，正在重新计算 Step 2 系数修正...\n\n💡 你还可以继续调整：\n• "调整区域系数 广东 1.05"\n• "调整备货系数 莲雾苹果汁 1.2"\n• "调整W1占比 0.06"\n• "安全库存改成7天"`,
-      thinking: [`修改区域系数：${subsidiary} → ${value}`, `自动定位到 Step 2 系数修正`, `使用新系数重新计算物料量...`],
+      response: `✅ 已调整区域系数\n\n• **${subsidiary}**：→ **${value}**\n\n**已重新计算** ✅ 右侧面板已跳转到 Step 2，请确认重算结果。\n\n💡 你还可以继续调整：\n• "调整区域系数 广东 1.05"\n• "调整备货系数 莲雾苹果汁 1.2"\n• "调整W1占比 0.06"\n• "安全库存改成7天"`,
+      thinking: [`修改区域系数：${subsidiary} → ${value}`, `自动定位到 Step 2 系数修正`, `已使用新系数重新计算物料量`],
       targetStep: 2,
     };
   }
@@ -36,8 +36,8 @@ function parseParameterAdjustment(text: string): { response: string; thinking: s
   if (stockMatch) {
     const [, material, value] = stockMatch;
     return {
-      response: `✅ 已调整备货系数\n\n• **${material}**：→ **${value}**\n\n修改已记录，正在重新计算 Step 2 BOM拆解...\n\n💡 你还可以继续调整其他参数。`,
-      thinking: [`修改备货系数：${material} → ${value}`, `自动定位到 Step 2 BOM拆解`, `使用新备货系数重新计算物料量...`],
+      response: `✅ 已调整备货系数\n\n• **${material}**：→ **${value}**\n\n**已重新计算** ✅ 右侧面板已跳转到 Step 2，请确认重算结果。\n\n💡 你还可以继续调整其他参数。`,
+      thinking: [`修改备货系数：${material} → ${value}`, `自动定位到 Step 2 BOM拆解`, `已使用新备货系数重新计算物料量`],
       targetStep: 2,
     };
   }
@@ -47,8 +47,8 @@ function parseParameterAdjustment(text: string): { response: string; thinking: s
   if (wMatch) {
     const [, week, value] = wMatch;
     return {
-      response: `✅ 已调整${week}占比\n\n• **${week}**：→ **${value}**\n\n⚠️ W1-W4为成品维度参数，修改后所有物料同步生效。\n\n修改已记录，正在重新计算 Step 2 物料量...`,
-      thinking: [`修改${week}占比 → ${value}（成品维度，全物料生效）`, `自动定位到 Step 2 物料量计算`, `重新计算所有物料 W1-W4 用量...`],
+      response: `✅ 已调整${week}占比\n\n• **${week}**：→ **${value}**\n\n⚠️ W1-W4为成品维度参数，修改后所有物料同步生效。\n\n**已重新计算** ✅ 右侧面板已跳转到 Step 2，请确认重算结果。`,
+      thinking: [`修改${week}占比 → ${value}（成品维度，全物料生效）`, `自动定位到 Step 2 物料量计算`, `已重新计算所有物料 W1-W4 用量`],
       targetStep: 2,
     };
   }
@@ -58,8 +58,8 @@ function parseParameterAdjustment(text: string): { response: string; thinking: s
   if (safetyMatch) {
     const [, days] = safetyMatch;
     return {
-      response: `✅ 已调整安全库存天数\n\n• 安全库存：5天 → **${days}天**\n\n修改已记录，正在重新校验 Step 3 安全库存...`,
-      thinking: [`修改安全库存天数：5天 → ${days}天`, `自动定位到 Step 3 预警检查`, `重新校验所有仓库安全库存...`],
+      response: `✅ 已调整安全库存天数\n\n• 安全库存：5天 → **${days}天**\n\n**已重新计算** ✅ 右侧面板已跳转到 Step 3，请确认重算结果。`,
+      thinking: [`修改安全库存天数：5天 → ${days}天`, `自动定位到 Step 3 预警检查`, `已重新校验所有仓库安全库存`],
       targetStep: 3,
     };
   }
@@ -69,8 +69,8 @@ function parseParameterAdjustment(text: string): { response: string; thinking: s
   if (supplierMatch) {
     const [, material, supplier, share, moq] = supplierMatch;
     return {
-      response: `✅ 已设置供应商信息\n\n• **${material}**\n  - 供应商：${supplier}\n  - 份额：${share}%\n  - MOQ：${moq || '1（默认）'}\n\n💡 份额之和必须=100%，可继续添加其他供应商。\n\n修改已记录，正在重新计算 Step 3 供应商分配...`,
-      thinking: [`设置供应商：${material} → ${supplier} ${share}% MOQ=${moq || 1}`, `自动定位到 Step 3 供应商分配`, `重新计算供应商份额与MOQ取整...`],
+      response: `✅ 已设置供应商信息\n\n• **${material}**\n  - 供应商：${supplier}\n  - 份额：${share}%\n  - MOQ：${moq || '1（默认）'}\n\n💡 份额之和必须=100%，可继续添加其他供应商。\n\n**已重新计算** ✅ 右侧面板已跳转到 Step 3，请确认重算结果。`,
+      thinking: [`设置供应商：${material} → ${supplier} ${share}% MOQ=${moq || 1}`, `自动定位到 Step 3 供应商分配`, `已重新计算供应商份额与MOQ取整`],
       targetStep: 3,
     };
   }
@@ -101,6 +101,7 @@ function App() {
   const [showSkillPopup, setShowSkillPopup] = useState(false);
   const [rightTab, setRightTab] = useState<Step>(1);
   const [tongpeiDone, setTongpeiDone] = useState(false);
+  const [useAISubset, setUseAISubset] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-switch right tab when step changes
@@ -428,14 +429,33 @@ function App() {
                             }
                             else if (action.type === 'notify') addBotMessage('📤 已发送飞书通知 ✅');
                             else if (action.type === 'skip') {
-                              if (step === 3) {
+                              if (step === 3 && !tongpeiDone) {
                                 addBotMessage('⏸️ **统配数据未到，流程暂停**\n\n当前已完成：\n• ✅ 汇总到仓\n• ✅ 供应商分配\n• ✅ 三道预警检查\n\n等待统配数据到达后，输入"统配数据已到"或点击按钮继续。');
+                              } else if (useAISubset) {
+                                setUseAISubset(false);
+                                simulateTyping(
+                                  '↩️ 已恢复使用 **全部23个历史品** 计算区域系数。\n\n右侧面板已更新，请确认。',
+                                  ['恢复全部23个历史品', '重新计算24个子公司区域系数均值'],
+                                  [{ label: '✅ 确认，继续', type: 'confirm' }],
+                                );
                               } else {
                                 addBotMessage('⏭️ 已跳过，继续下一步。');
                                 confirmStep(step);
                               }
                             }
-                            else if (action.type === 'edit') addBotMessage(`✏️ 请在对话中输入修改指令，或输入"返回修改"。`);
+                            else if (action.type === 'edit') {
+                              if (step === 2) {
+                                setUseAISubset(true);
+                                setRightTab(2);
+                                simulateTyping(
+                                  `✅ 已切换为 **AI推荐子集**（15个历史品，相似度≥80%）\n\n区域系数已重新计算，详见右侧面板。\n\n排除的历史品（8个，相似度<80%）：\n• 轻因·云游栖梦（70%）\n• 轻因·花田乌龙（68%）\n• 轻因·伯牙绝弦（65%）\n• 轻因·云栖梦（63%）\n• 一抹山月（78%）\n• 月抹静山（75%）\n• 醒时春山（76%）\n• 海上雾奇兰（72%）`,
+                                  ['筛选相似度≥80%的历史品：15个', '重新计算24个子公司区域系数均值', '右侧面板已更新'],
+                                  [{ label: '✅ 确认，继续', type: 'confirm' }, { label: '↩️ 恢复全部23品', type: 'skip' }],
+                                );
+                              } else {
+                                addBotMessage(`✏️ 请在对话中输入修改指令，或输入"返回修改"。`);
+                              }
+                            }
                           }}
                           disabled={isTyping}
                         >
@@ -536,7 +556,7 @@ function App() {
               {/* Tab Content */}
               <div className="right-tab-content">
                 {rightTab === 1 && <RightStep1CupForecast productInfo={productInfo} materials={materials} />}
-                {rightTab === 2 && <RightStep2CoefficientsAndBOM regions={regions} flooredCount={flooredCount} materials={materials} productInfo={productInfo} />}
+                {rightTab === 2 && <RightStep2CoefficientsAndBOM regions={regions} flooredCount={flooredCount} materials={materials} productInfo={productInfo} useAISubset={useAISubset} />}
                 {rightTab === 3 && <RightStep3WarehouseAndWarnings tongpeiDone={tongpeiDone} />}
                 {rightTab === 4 && <RightStep4Output productInfo={productInfo} />}
               </div>
@@ -702,8 +722,47 @@ function RightStep1CupForecast({ productInfo, materials }: { productInfo: NewPro
   );
 }
 
-function RightStep2CoefficientsAndBOM({ regions, flooredCount, materials, productInfo }: { regions: RegionCoefficient[]; flooredCount: number; materials: BOMMaterial[]; productInfo: NewProductInfo }) {
-  const [showCalcDetail, setShowCalcDetail] = useState(false);
+function RightStep2CoefficientsAndBOM({ regions, materials, productInfo, useAISubset }: { regions: RegionCoefficient[]; flooredCount: number; materials: BOMMaterial[]; productInfo: NewProductInfo; useAISubset: boolean }) {
+  // Filter products based on AI subset
+  const filteredProducts = useMemo(() => {
+    return useAISubset
+      ? historicalProductsDetail.filter(p => p.similarity >= 0.80)
+      : historicalProductsDetail;
+  }, [useAISubset]);
+
+  // Generate calculation matrix: each product × each subsidiary
+  const calcData = useMemo(() => {
+    return filteredProducts.map((p, pi) => {
+      const values: Record<string, number> = {};
+      regions.forEach((r) => {
+        const noise = (Math.sin(pi * 127.1 + r.rawValue * 3117) * 43758.5453);
+        const frac = noise - Math.floor(noise);
+        values[r.subsidiary] = Math.round((r.rawValue + (frac * 0.08 - 0.04)) * 1000) / 1000;
+      });
+      return { name: p.name, category: p.category, similarity: p.similarity, values };
+    });
+  }, [filteredProducts, regions]);
+
+  // Calculate mean for each subsidiary
+  const means = useMemo(() => {
+    const m: Record<string, number> = {};
+    regions.forEach(r => {
+      const sum = calcData.reduce((s, d) => s + d.values[r.subsidiary], 0);
+      m[r.subsidiary] = Math.round((sum / calcData.length) * 1000) / 1000;
+    });
+    return m;
+  }, [calcData, regions]);
+
+  // Apply floor rule
+  const floored = useMemo(() => {
+    const f: Record<string, number> = {};
+    regions.forEach(r => {
+      f[r.subsidiary] = Math.round(Math.max(1, means[r.subsidiary]) * 1000) / 1000;
+    });
+    return f;
+  }, [means, regions]);
+
+  const currentFlooredCount = regions.filter(r => means[r.subsidiary] < 1).length;
 
   return (
     <div className="animate-in">
@@ -711,110 +770,61 @@ function RightStep2CoefficientsAndBOM({ regions, flooredCount, materials, produc
 
       {/* 区域系数 */}
       <div className="card">
-        <div className="card-title">📐 区域系数（{historicalProducts.length}个历史品均值）</div>
+        <div className="card-title">
+          📐 区域系数（{filteredProducts.length}个历史品均值）
+          {useAISubset && <span style={{ fontSize: 11, color: 'var(--accent)', marginLeft: 8, background: 'var(--accent-light)', padding: '2px 8px', borderRadius: 4 }}>AI推荐子集</span>}
+        </div>
         <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-          <div className="kpi-card"><div className="kpi-label">参考历史品数</div><div className="kpi-value" style={{ color: 'var(--accent)' }}>{historicalProducts.length}</div></div>
-          <div className="kpi-card"><div className="kpi-label">兜底为1.0</div><div className="kpi-value" style={{ color: 'var(--warn)' }}>{flooredCount}</div></div>
-          <div className="kpi-card"><div className="kpi-label">最高系数</div><div className="kpi-value">{Math.max(...regions.map(r => r.coefficient)).toFixed(3)}</div></div>
+          <div className="kpi-card"><div className="kpi-label">参考历史品数</div><div className="kpi-value" style={{ color: 'var(--accent)' }}>{filteredProducts.length}</div></div>
+          <div className="kpi-card"><div className="kpi-label">兜底为1.0</div><div className="kpi-value" style={{ color: 'var(--warn)' }}>{currentFlooredCount}</div></div>
+          <div className="kpi-card"><div className="kpi-label">最高系数</div><div className="kpi-value">{Math.max(...regions.map(r => floored[r.subsidiary])).toFixed(3)}</div></div>
         </div>
 
-        {/* 计算过程展示 */}
-        <div style={{ marginTop: 12, marginBottom: 12 }}>
-          <button 
-            className="page-btn" 
-            style={{ fontSize: 12, padding: '6px 14px', fontWeight: 600 }}
-            onClick={() => setShowCalcDetail(!showCalcDetail)}
-          >
-            {showCalcDetail ? '▼' : '▶'} 查看计算过程（{historicalProducts.length}个历史品 × 5个代表性子公司）
-          </button>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.6 }}>
+          <strong>计算公式：</strong>区域系数 = AVG(历史品达标率) = AVG(实际销量 ÷ 预测销量)<br/>
+          <strong>兜底规则：</strong>若均值 &lt; 1.0 → 取 1.0（防止低估）
         </div>
 
-        {showCalcDetail && (
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.6 }}>
-              <strong>计算公式：</strong>区域系数 = AVG(历史品达标率) = AVG(实际销量 ÷ 预测销量)<br/>
-              <strong>兜底规则：</strong>若均值 &lt; 1.0 → 取 1.0（防止低估）
-            </div>
-            <div style={{ overflowX: 'auto', maxHeight: 360 }}>
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th style={{ minWidth: 120 }}>历史品</th>
-                    {regionCalcProcess.sampleSubs.map(sub => (
-                      <th key={sub} className="num" style={{ minWidth: 70 }}>{sub.replace('子公司', '')}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {regionCalcProcess.data.map((item, i) => (
-                    <tr key={i}>
-                      <td style={{ fontSize: 11, fontWeight: 500 }}>{item.name}</td>
-                      <td className="num" style={{ color: item.hubei >= 1 ? 'var(--accent)' : 'var(--warn)', fontWeight: 600 }}>{item.hubei.toFixed(3)}</td>
-                      <td className="num" style={{ color: item.guangdong >= 1 ? 'var(--accent)' : 'var(--warn)', fontWeight: 600 }}>{item.guangdong.toFixed(3)}</td>
-                      <td className="num" style={{ color: item.zhejiang >= 1 ? 'var(--accent)' : 'var(--warn)', fontWeight: 600 }}>{item.zhejiang.toFixed(3)}</td>
-                      <td className="num" style={{ color: item.beijing >= 1 ? 'var(--accent)' : 'var(--warn)', fontWeight: 600 }}>{item.beijing.toFixed(3)}</td>
-                      <td className="num" style={{ color: item.liaoning >= 1 ? 'var(--accent)' : 'var(--warn)', fontWeight: 600 }}>{item.liaoning.toFixed(3)}</td>
-                    </tr>
-                  ))}
-                  {/* 均值行 */}
-                  <tr style={{ borderTop: '2px solid var(--accent)', background: 'var(--accent-light)' }}>
-                    <td style={{ fontWeight: 700, fontSize: 12 }}>均值（23品）</td>
-                    <td className="num" style={{ fontWeight: 700, color: 'var(--accent)' }}>
-                      {(regionCalcProcess.data.reduce((s, d) => s + d.hubei, 0) / regionCalcProcess.data.length).toFixed(3)}
-                    </td>
-                    <td className="num" style={{ fontWeight: 700, color: 'var(--warn)' }}>
-                      {(regionCalcProcess.data.reduce((s, d) => s + d.guangdong, 0) / regionCalcProcess.data.length).toFixed(3)}
-                    </td>
-                    <td className="num" style={{ fontWeight: 700, color: 'var(--accent)' }}>
-                      {(regionCalcProcess.data.reduce((s, d) => s + d.zhejiang, 0) / regionCalcProcess.data.length).toFixed(3)}
-                    </td>
-                    <td className="num" style={{ fontWeight: 700, color: 'var(--warn)' }}>
-                      {(regionCalcProcess.data.reduce((s, d) => s + d.beijing, 0) / regionCalcProcess.data.length).toFixed(3)}
-                    </td>
-                    <td className="num" style={{ fontWeight: 700, color: 'var(--accent)' }}>
-                      {(regionCalcProcess.data.reduce((s, d) => s + d.liaoning, 0) / regionCalcProcess.data.length).toFixed(3)}
-                    </td>
-                  </tr>
-                  {/* 兜底后行 */}
-                  <tr style={{ background: 'rgba(34,197,94,0.06)' }}>
-                    <td style={{ fontWeight: 700, fontSize: 12 }}>兜底后系数</td>
-                    <td className="num" style={{ fontWeight: 700, color: 'var(--good)' }}>
-                      {Math.max(1, regionCalcProcess.data.reduce((s, d) => s + d.hubei, 0) / regionCalcProcess.data.length).toFixed(3)}
-                    </td>
-                    <td className="num" style={{ fontWeight: 700, color: 'var(--good)' }}>
-                      {Math.max(1, regionCalcProcess.data.reduce((s, d) => s + d.guangdong, 0) / regionCalcProcess.data.length).toFixed(3)}
-                    </td>
-                    <td className="num" style={{ fontWeight: 700, color: 'var(--good)' }}>
-                      {Math.max(1, regionCalcProcess.data.reduce((s, d) => s + d.zhejiang, 0) / regionCalcProcess.data.length).toFixed(3)}
-                    </td>
-                    <td className="num" style={{ fontWeight: 700, color: 'var(--good)' }}>
-                      {Math.max(1, regionCalcProcess.data.reduce((s, d) => s + d.beijing, 0) / regionCalcProcess.data.length).toFixed(3)}
-                    </td>
-                    <td className="num" style={{ fontWeight: 700, color: 'var(--good)' }}>
-                      {Math.max(1, regionCalcProcess.data.reduce((s, d) => s + d.liaoning, 0) / regionCalcProcess.data.length).toFixed(3)}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>
-              💡 以上展示5个代表性子公司的计算过程，完整24个子公司见下方表格
-            </div>
-          </div>
-        )}
-
-        <div style={{ maxHeight: 300, overflowY: 'auto' }}>
-          <table className="data-table">
-            <thead><tr><th>子公司</th><th className="num">原始均值</th><th className="num">最终系数</th><th>状态</th></tr></thead>
+        {/* 统一表格：所有历史品 × 所有24个子公司 */}
+        <div className="calc-table-wrapper">
+          <table className="data-table calc-table">
+            <thead>
+              <tr>
+                <th style={{ minWidth: 130 }}>历史品{useAISubset ? '（≥80%）' : ''}</th>
+                {regions.map(r => (
+                  <th key={r.subsidiary} className="num" style={{ minWidth: 56 }}>{r.subsidiary.replace('子公司', '')}</th>
+                ))}
+              </tr>
+            </thead>
             <tbody>
-              {regions.map((r, i) => (
+              {calcData.map((item, i) => (
                 <tr key={i}>
-                  <td style={{ fontWeight: 600, fontSize: 12 }}>{r.subsidiary}</td>
-                  <td className="num" style={{ color: 'var(--text-muted)' }}>{r.rawValue.toFixed(3)}</td>
-                  <td className="num" style={{ fontWeight: 700, color: r.coefficient > 1 ? 'var(--accent)' : 'var(--warn)' }}>{r.coefficient.toFixed(3)}</td>
-                  <td>{r.isFloored ? <span style={{ fontSize: 10, color: 'var(--warn)', background: 'rgba(245,158,11,0.1)', padding: '2px 6px', borderRadius: 4 }}>兜底</span> : <span style={{ fontSize: 10, color: 'var(--good)' }}>—</span>}</td>
+                  <td>{item.name}</td>
+                  {regions.map(r => (
+                    <td key={r.subsidiary} className="num" style={{ color: item.values[r.subsidiary] >= 1 ? 'var(--accent)' : 'var(--warn)' }}>
+                      {item.values[r.subsidiary].toFixed(3)}
+                    </td>
+                  ))}
                 </tr>
               ))}
+              {/* 均值行 */}
+              <tr className="mean-row">
+                <td>均值（{filteredProducts.length}品）</td>
+                {regions.map(r => (
+                  <td key={r.subsidiary} className="num" style={{ color: means[r.subsidiary] >= 1 ? 'var(--accent)' : 'var(--warn)' }}>
+                    {means[r.subsidiary].toFixed(3)}
+                  </td>
+                ))}
+              </tr>
+              {/* 兜底后行 */}
+              <tr className="floor-row">
+                <td>兜底后系数</td>
+                {regions.map(r => (
+                  <td key={r.subsidiary} className="num" style={{ color: 'var(--good)' }}>
+                    {floored[r.subsidiary].toFixed(3)}
+                  </td>
+                ))}
+              </tr>
             </tbody>
           </table>
         </div>
