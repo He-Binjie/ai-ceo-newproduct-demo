@@ -1122,6 +1122,54 @@ function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone }: { tongpei
 }
 
 function RightStep4Output({ productInfo }: { productInfo: NewProductInfo }) {
+  // 预警计算明细数据
+  const warningDetail = [
+    {
+      name: '安溪铁观音', code: '20260901-001',
+      forecastQty: 66285, orderQty: 66285,
+      stockDeviation: 5.2, stockThreshold: 10, stockPass: true,
+      stockCalc: '|66,285 - 66,285| ÷ 66,285 = 0%（含MOQ取整后5.2%）',
+      moqDeviation: 0.03, moqThreshold: 5, moqPass: true,
+      moqCalc: 'MOQ=500, 原始量39,771 → 取整39,500, 偏差=271÷39,771=0.68%（加权均值0.03%）',
+      safetyExtra: 42920, safetyDaily: 3800, safetyDays: 20.3, safetyThreshold: 5, safetyPass: true,
+      safetyCalc: '统配外42,920 ÷ 日均消耗3,800 = 11.3天（全国加权均值20.3天）',
+    },
+    {
+      name: '莲雾苹果汁', code: '20260902-002',
+      forecastQty: 363340, orderQty: 363540,
+      stockDeviation: 8.6, stockThreshold: 10, stockPass: true,
+      stockCalc: '|363,340 - 363,540| ÷ 363,340 = 0.055%（含MOQ取整后8.6%）',
+      moqDeviation: 0.055, moqThreshold: 5, moqPass: true,
+      moqCalc: 'MOQ=200, 原始量224,554 → 取整224,600, 偏差=46÷224,554=0.02%（加权均值0.055%）',
+      safetyExtra: 224554, safetyDaily: 20800, safetyDays: 17.2, safetyThreshold: 5, safetyPass: true,
+      safetyCalc: '统配外224,554 ÷ 日均消耗20,800 = 10.8天（全国加权均值17.2天）',
+    },
+    {
+      name: '冷冻生椰乳', code: '20260903-003',
+      forecastQty: 138095, orderQty: 138345,
+      stockDeviation: 12.1, stockThreshold: 10, stockPass: false,
+      stockCalc: '|138,095 - 138,345| ÷ 138,095 = 0.18%（含MOQ取整后12.1%）',
+      moqDeviation: 0.18, moqThreshold: 5, moqPass: true,
+      moqCalc: 'MOQ=100, 原始量78,316 → 取整78,400, 偏差=84÷78,316=0.11%（加权均值0.18%）',
+      safetyExtra: 78316, safetyDaily: 10000, safetyDays: 11.8, safetyThreshold: 5, safetyPass: true,
+      safetyCalc: '统配外78,316 ÷ 日均消耗10,000 = 7.8天（全国加权均值11.8天）',
+    },
+    {
+      name: '东方美人乌龙茶-A', code: '0260815-004',
+      forecastQty: 28585, orderQty: 28655,
+      stockDeviation: 3.8, stockThreshold: 10, stockPass: true,
+      stockCalc: '|28,585 - 28,655| ÷ 28,585 = 0.24%（含MOQ取整后3.8%）',
+      moqDeviation: 0.24, moqThreshold: 5, moqPass: true,
+      moqCalc: 'MOQ=200, 原始量28,585 → 取整28,600, 偏差=15÷28,585=0.05%（加权均值0.24%）',
+      safetyExtra: 28585, safetyDaily: 2200, safetyDays: 20.0, safetyThreshold: 5, safetyPass: true,
+      safetyCalc: '统配外28,585 ÷ 日均消耗2,200 = 13.0天（全国加权均值20.0天）',
+    },
+  ];
+
+  const passIcon = (pass: boolean) => pass
+    ? <span style={{ color: 'var(--good)', fontWeight: 600 }}>✅ 通过</span>
+    : <span style={{ color: 'var(--danger, #ef4444)', fontWeight: 600 }}>❌ 超阈值</span>;
+
   return (
     <div className="animate-in">
       <div className="panel-title"><span className="step-badge">Step 4</span>结果输出</div>
@@ -1129,34 +1177,118 @@ function RightStep4Output({ productInfo }: { productInfo: NewProductInfo }) {
         <div className="kpi-card"><div className="kpi-label">新品</div><div className="kpi-value" style={{ fontSize: 16 }}>{productInfo.name}</div></div>
         <div className="kpi-card"><div className="kpi-label">门店数</div><div className="kpi-value">{productInfo.storeCount.toLocaleString()}</div></div>
         <div className="kpi-card"><div className="kpi-label">物料数</div><div className="kpi-value">4</div></div>
-        <div className="kpi-card"><div className="kpi-label">预警</div><div className="kpi-value" style={{ color: 'var(--good)' }}>全部通过</div></div>
+        <div className="kpi-card"><div className="kpi-label">预警</div><div className="kpi-value" style={{ color: 'var(--warn)' }}>1项超阈值</div></div>
       </div>
+
+      {/* 全国物料最终方案 */}
       <div className="card">
         <div className="card-title">📊 全国物料最终方案<button className="export-btn">📥 导出</button></div>
         <table className="data-table">
-          <thead><tr><th>物料</th><th className="num">预测量</th><th className="num">统配量</th><th className="num">统配外</th><th className="num">下单量</th></tr></thead>
+          <thead><tr><th>物料</th><th>物料编码</th><th className="num">预测量</th><th className="num">统配量</th><th className="num">统配外</th><th className="num">下单量</th><th>单位</th></tr></thead>
           <tbody>
             {nationalMaterialSummary.map((m, i) => (
               <tr key={i}>
                 <td style={{ fontWeight: 600 }}>{m.name}</td>
+                <td style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{['20260901-001','20260902-002','20260903-003','0260815-004'][i]}</td>
                 <td className="num">{m.forecastQty.toLocaleString()}</td>
                 <td className="num">{m.allocationQty.toLocaleString()}</td>
                 <td className="num">{m.extraStock.toLocaleString()}</td>
                 <td className="num" style={{ fontWeight: 700, color: 'var(--accent)' }}>{m.orderQty.toLocaleString()}</td>
+                <td style={{ fontSize: 11 }}>{['箱','箱','瓶','箱'][i]}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <div className="card">
-        <div className="card-title">📋 预警汇总<button className="export-btn">📥 导出</button></div>
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 12, padding: '4px 12px', borderRadius: 6, background: 'rgba(34,197,94,0.1)', color: 'var(--good)' }}>✅ 安溪铁观音 全部通过</span>
-          <span style={{ fontSize: 12, padding: '4px 12px', borderRadius: 6, background: 'rgba(34,197,94,0.1)', color: 'var(--good)' }}>✅ 莲雾苹果汁 全部通过</span>
-          <span style={{ fontSize: 12, padding: '4px 12px', borderRadius: 6, background: 'rgba(239,68,68,0.1)', color: 'var(--danger, #ef4444)' }}>❌ 冷冻生椰乳 备货偏差12.1%</span>
-          <span style={{ fontSize: 12, padding: '4px 12px', borderRadius: 6, background: 'rgba(34,197,94,0.1)', color: 'var(--good)' }}>✅ 东方美人乌龙茶-A 全部通过</span>
-          <span style={{ fontSize: 12, padding: '4px 12px', borderRadius: 6, background: 'rgba(245,158,11,0.1)', color: 'var(--warn)' }}>⚠️ 异常统配 12家</span>
+
+      {/* 预警汇总 — 计算明细 */}
+      <div className="card" style={{ borderColor: 'var(--warn)', background: 'rgba(245,158,11,0.02)' }}>
+        <div className="card-title" style={{ color: 'var(--warn)' }}>📋 预警汇总 — 计算明细<button className="export-btn">📥 导出</button></div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.6 }}>
+          三道预警阈值：备货偏差 ≤10% ｜ MOQ取整偏差 ≤5% ｜ 安全库存 ≥5天
         </div>
+
+        {warningDetail.map((m, i) => (
+          <div key={i} style={{ marginBottom: i < warningDetail.length - 1 ? 20 : 0, padding: '12px 16px', borderRadius: 8, border: `1px solid ${m.stockPass ? 'var(--border)' : 'var(--warn)'}`, background: m.stockPass ? 'white' : 'rgba(245,158,11,0.04)' }}>
+            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+              {m.name}
+              <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{m.code}</span>
+              {!m.stockPass && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, background: 'rgba(239,68,68,0.1)', color: 'var(--danger, #ef4444)' }}>⚠️ 备货偏差超阈值</span>}
+            </div>
+            <table className="data-table" style={{ marginBottom: 0 }}>
+              <thead>
+                <tr>
+                  <th>预警项</th>
+                  <th className="num">计算值</th>
+                  <th className="num">阈值</th>
+                  <th>计算公式</th>
+                  <th>结果</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style={{ fontWeight: 600 }}>备货偏差</td>
+                  <td className="num" style={{ color: m.stockPass ? 'var(--good)' : 'var(--danger, #ef4444)', fontWeight: 700 }}>{m.stockDeviation}%</td>
+                  <td className="num">≤{m.stockThreshold}%</td>
+                  <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{m.stockCalc}</td>
+                  <td>{passIcon(m.stockPass)}</td>
+                </tr>
+                <tr>
+                  <td style={{ fontWeight: 600 }}>MOQ取整偏差</td>
+                  <td className="num" style={{ color: 'var(--good)', fontWeight: 700 }}>{m.moqDeviation}%</td>
+                  <td className="num">≤{m.moqThreshold}%</td>
+                  <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{m.moqCalc}</td>
+                  <td>{passIcon(m.moqPass)}</td>
+                </tr>
+                <tr>
+                  <td style={{ fontWeight: 600 }}>安全库存</td>
+                  <td className="num" style={{ color: 'var(--good)', fontWeight: 700 }}>{m.safetyDays}天</td>
+                  <td className="num">≥{m.safetyThreshold}天</td>
+                  <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{m.safetyCalc}</td>
+                  <td>{passIcon(m.safetyPass)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        ))}
+      </div>
+
+      {/* 异常统配汇总 */}
+      <div className="card">
+        <div className="card-title">⚠️ 异常统配门店汇总<button className="export-btn">📥 导出</button></div>
+        <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+          <div className="kpi-card">
+            <div className="kpi-label">异常门店数</div>
+            <div className="kpi-value" style={{ color: 'var(--warn)' }}>12</div>
+          </div>
+          <div className="kpi-card">
+            <div className="kpi-label">涉及物料</div>
+            <div className="kpi-value">3种</div>
+          </div>
+          <div className="kpi-card">
+            <div className="kpi-label">最大差异</div>
+            <div className="kpi-value" style={{ color: 'var(--danger, #ef4444)' }}>-13</div>
+          </div>
+        </div>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6 }}>
+          异常原因：统配量 &gt; 预测量，统配外=0。建议人工确认是否需要追加备货。<br/>
+          详见 Step 3 异常统配门店明细表。
+        </p>
+      </div>
+
+      {/* 导出清单 */}
+      <div className="card">
+        <div className="card-title">📥 导出Excel（5个Sheet）</div>
+        <table className="data-table">
+          <thead><tr><th>Sheet</th><th>内容</th><th className="num">行数</th><th>说明</th></tr></thead>
+          <tbody>
+            <tr><td style={{ fontWeight: 600 }}>Sheet1</td><td>门店明细</td><td className="num">{productInfo.storeCount.toLocaleString()} × 4物料 × W1-W4</td><td style={{ fontSize: 11 }}>逐门店逐物料计算结果</td></tr>
+            <tr><td style={{ fontWeight: 600 }}>Sheet2</td><td>仓库汇总</td><td className="num">30+仓库 × 4物料</td><td style={{ fontSize: 11 }}>按仓库汇总统配+统配外</td></tr>
+            <tr><td style={{ fontWeight: 600 }}>Sheet3</td><td>供应商分配</td><td className="num">6条</td><td style={{ fontSize: 11 }}>供应商份额+MOQ取整</td></tr>
+            <tr><td style={{ fontWeight: 600 }}>Sheet4</td><td>预警清单</td><td className="num">4物料 × 3预警</td><td style={{ fontSize: 11 }}>三道预警计算明细</td></tr>
+            <tr><td style={{ fontWeight: 600 }}>Sheet5</td><td>SCM导入模板</td><td className="num">—</td><td style={{ fontSize: 11 }}>可直接导入SCM系统</td></tr>
+          </tbody>
+        </table>
       </div>
     </div>
   );
