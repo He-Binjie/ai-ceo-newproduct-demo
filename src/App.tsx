@@ -180,9 +180,9 @@ function App() {
         break;
       case 3:
         simulateTyping(
-          `汇总到仓 + 供应商匹配 + 预警检查完成 ✅\n\n🏭 **汇总到仓**（仓店映射9,708条）\n• 北京二级仓：莲雾苹果汁 **13,399** 瓶\n• 详见右侧各仓库汇总\n\n📦 **供应商分配**：待确认（右侧面板可操作）\n\n📊 **预警检查（物料维度）**\n• 安溪铁观音：备货偏差 5.2% ✅ ｜ MOQ 0.03% ✅ ｜ 安库 20.3天 ✅\n• 莲雾苹果汁：备货偏差 8.6% ✅ ｜ MOQ 0.055% ✅ ｜ 安库 17.2天 ✅\n• 冷冻生椰乳：备货偏差 **12.1%** ❌ 超阈值 ｜ MOQ 0.18% ✅ ｜ 安库 11.8天 ✅\n• 东方美人乌龙茶-A：备货偏差 3.8% ✅ ｜ MOQ 0.24% ✅ ｜ 安库 20.0天 ✅\n\n⏰ **统配数据（T-30出数）**\n统配数据是否已到？如果已到，我将继续进行统配比对和统配外计算。\n\n💡 **如需调整参数，可直接输入：**\n• "调整区域系数 湖北 1.1"\n• "调整备货系数 莲雾苹果汁 1.2"\n• "调整W1占比 0.06"\n• "安全库存改成7天"\n• 输入"帮助"查看完整参数清单`,
-          ['读取仓店映射Sheet2：9,708条', '按仓库汇总门店物料量', '备货偏差/ MOQ取整/安全库存三道预警'],
-          [{ label: '✅ 统配数据已到，继续', type: 'confirm' }, { label: '⏸️ 统配数据未到，暂停', type: 'skip' }, { label: '🔄 调参重跑', type: 'recalculate' }],
+          `汇总到仓 + 预警检查完成 ✅\n\n🏭 **汇总到仓**（仓店映射9,708条）\n• 北京二级仓：莲雾苹果汁 **13,399** 瓶\n• 详见右侧各仓库汇总\n\n📊 **预警检查（物料维度）**\n• 安溪铁观音：备货偏差 5.2% ✅ ｜ MOQ 0.03% ✅ ｜ 安库 20.3天 ✅\n• 莲雾苹果汁：备货偏差 8.6% ✅ ｜ MOQ 0.055% ✅ ｜ 安库 17.2天 ✅\n• 冷冻生椰乳：备货偏差 **12.1%** ❌ 超阈值 ｜ MOQ 0.18% ✅ ｜ 安库 11.8天 ✅\n• 东方美人乌龙茶-A：备货偏差 3.8% ✅ ｜ MOQ 0.24% ✅ ｜ 安库 20.0天 ✅\n\n📦 **供应商数据**\n供应商分配数据是否已确认？确认后我将进行份额分配与MOQ取整。\n\n💡 **如需调整参数，可直接输入：**\n• "调整区域系数 湖北 1.1"\n• "调整备货系数 莲雾苹果汁 1.2"\n• "调整W1占比 0.06"\n• "安全库存改成7天"\n• 输入"帮助"查看完整参数清单`,
+          ['读取仓店映射Sheet2：9,708条', '按仓库汇总门店物料量', '备货偏差/ MOQ取整/安全库存三道预警（物料维度）'],
+          [{ label: '✅ 供应商数据已确认', type: 'supplier_confirm' }, { label: '⏸️ 供应商数据未到，暂停', type: 'supplier_skip' }, { label: '🔄 调参重跑', type: 'recalculate' }],
         );
         break;
       case 4:
@@ -226,6 +226,22 @@ function App() {
           `⏰ **T-30 统配比对完成** ✅\n\n📊 **统配比对 — 门店1101010005（北京王府井APM店）**\n| 物料 | 预测 | 统配 | 统配外 | 合计 |\n|------|------|------|--------|------|\n| 安溪铁观音 | 16 | 6 | 10 | 16 |\n| 莲雾苹果汁 | 99 | 35 | 64 | 99 |\n| 冷冻生椰乳 | 32 | 12 | 20 | 32 |\n| 东方美人 | 8 | 0 | 8 | 8 |\n\n⚠️ 发现 **12** 家异常统配门店（统配>预测），已标记。\n\n统配外 = IF(预测-统配<0, 0, 预测-统配)\n\n详见右侧面板。确认后生成最终方案。`,
           ['读取统配清单', 'IF逻辑：统配外=IF(预测-统配<0, 0, 预测-统配)', '异常统配识别：统配>预测'],
           [{ label: '✅ 确认，生成方案', type: 'confirm' }],
+        );
+      }, 600);
+      return;
+    }
+
+    // 供应商数据已确认
+    if ((text === '供应商数据已确认' || text === '供应商已确认') && step === 3 && !supplierDone) {
+      setSupplierDone(true);
+      setRightTab(3);
+      setIsTyping(true);
+      setTimeout(() => {
+        setIsTyping(false);
+        simulateTyping(
+          `📦 **供应商数据已确认** ✅\n\n已完成份额分配与MOQ取整：\n• 安溪铁观音：福建安溪茶业A(60%) + 云南普洱供应链B(40%)\n• 莲雾苹果汁：海南果汁工厂C(100%)\n• 冷冻生椰乳：椰树供应链D(70%) + 海南椰品E(30%)\n• 东方美人乌龙茶-A：台湾茶业F(100%)\n\n详见右侧供应商分配表。\n\n⏰ **统配数据（T-30出数）**\n统配数据是否已到？如果已到，我将继续进行统配比对和统配外计算。`,
+          ['读取供应商主数据', '按份额分配采购量', 'MOQ取整校验'],
+          [{ label: '✅ 统配数据已到，继续', type: 'confirm' }, { label: '⏸️ 统配数据未到，暂停', type: 'skip' }],
         );
       }, 600);
       return;
@@ -460,6 +476,18 @@ function App() {
                                 addBotMessage(`✏️ 请在对话中输入修改指令，或输入"返回修改"。`);
                               }
                             }
+                            else if (action.type === 'supplier_confirm') {
+                              setSupplierDone(true);
+                              setRightTab(3);
+                              simulateTyping(
+                                `📦 **供应商数据已确认** ✅\n\n已完成份额分配与MOQ取整：\n• 安溪铁观音：福建安溪茶业A(60%) + 云南普洱供应链B(40%)\n• 莲雾苹果汁：海南果汁工厂C(100%)\n• 冷冻生椰乳：椰树供应链D(70%) + 海南椰品E(30%)\n• 东方美人乌龙茶-A：台湾茶业F(100%)\n\n详见右侧供应商分配表。\n\n⏰ **统配数据（T-30出数）**\n统配数据是否已到？如果已到，我将继续进行统配比对和统配外计算。`,
+                                ['读取供应商主数据', '按份额分配采购量', 'MOQ取整校验'],
+                                [{ label: '✅ 统配数据已到，继续', type: 'confirm' }, { label: '⏸️ 统配数据未到，暂停', type: 'skip' }],
+                              );
+                            }
+                            else if (action.type === 'supplier_skip') {
+                              addBotMessage('⏸️ **供应商数据未到，流程暂停**\n\n当前已完成：\n• ✅ 汇总到仓\n• ✅ 三道预警检查（物料维度）\n\n等待供应商数据确认后，输入"供应商数据已确认"或点击按钮继续。\n\n⏰ 统配数据也请同步关注。');
+                            }
                           }}
                           disabled={isTyping}
                         >
@@ -562,7 +590,7 @@ function App() {
               <div className="right-tab-content">
                 {rightTab === 1 && <RightStep1CupForecast productInfo={productInfo} materials={materials} />}
                 {rightTab === 2 && <RightStep2CoefficientsAndBOM regions={regions} flooredCount={flooredCount} materials={materials} productInfo={productInfo} useAISubset={useAISubset} />}
-                {rightTab === 3 && <RightStep3WarehouseAndWarnings tongpeiDone={tongpeiDone} supplierDone={supplierDone} setSupplierDone={setSupplierDone} />}
+                {rightTab === 3 && <RightStep3WarehouseAndWarnings tongpeiDone={tongpeiDone} supplierDone={supplierDone} />}
                 {rightTab === 4 && <RightStep4Output productInfo={productInfo} />}
               </div>
             </>
@@ -907,7 +935,7 @@ W4 = 1150.49 × 1.2 × 0.012544 × 7 ÷ 11.41 × 1.0 = 10.62
   );
 }
 
-function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone, setSupplierDone }: { tongpeiDone: boolean; supplierDone: boolean; setSupplierDone: (v: boolean) => void }) {
+function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone }: { tongpeiDone: boolean; supplierDone: boolean }) {
   // 异常统配门店明细（12家）
   const abnormalStores = [
     { storeId: '44030708', storeName: '广东深圳龙岗摩尔城店', warehouse: '广东一级仓', material: '莲雾苹果汁', forecast: 82, unified: 95, diff: -13 },
@@ -980,11 +1008,9 @@ function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone, setSupplier
       ) : (
         <div className="card" style={{ borderColor: 'var(--warn)', background: 'rgba(245,158,11,0.04)' }}>
           <div className="card-title" style={{ color: 'var(--warn)' }}>📦 供应商数据（待确认）</div>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.8, marginBottom: 12 }}>
-            供应商分配数据尚未确认，当前使用默认值（1供应商，份额100%，MOQ=1）。<br/>
-            确认供应商数据后将自动进行份额分配与MOQ取整。
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.8 }}>
+            供应商分配数据尚未确认，请在左侧对话中点击"供应商数据已确认"或输入"供应商已确认"。
           </p>
-          <button className="confirm-btn confirm-btn-confirm" onClick={() => setSupplierDone(true)} style={{ fontSize: 12 }}>✅ 供应商数据已确认</button>
         </div>
       )}
 

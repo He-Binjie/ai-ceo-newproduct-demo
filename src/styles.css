@@ -489,6 +489,10 @@ body {
 .confirm-btn-edit:hover:not(:disabled) { background: var(--accent-light); }
 .confirm-btn-skip { border-color: var(--warn); color: var(--warn); }
 .confirm-btn-skip:hover:not(:disabled) { background: rgba(245,158,11,0.08); }
+.confirm-btn-supplier_confirm { border-color: var(--accent); color: var(--accent); }
+.confirm-btn-supplier_confirm:hover:not(:disabled) { background: var(--accent); color: white; }
+.confirm-btn-supplier_skip { border-color: var(--warn); color: var(--warn); }
+.confirm-btn-supplier_skip:hover:not(:disabled) { background: rgba(245,158,11,0.08); }
 .confirm-btn-recalculate { border-color: var(--purple); color: var(--purple); }
 .confirm-btn-recalculate:hover:not(:disabled) { background: rgba(167,139,250,0.08); }
 .confirm-btn-export { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }

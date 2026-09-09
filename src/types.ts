@@ -139,7 +139,7 @@ export interface ChatMessage {
 
 export interface ConfirmAction {
   label: string;
-  type: 'confirm' | 'edit' | 'skip' | 'recalculate' | 'export' | 'notify';
+  type: 'confirm' | 'edit' | 'skip' | 'recalculate' | 'export' | 'notify' | 'supplier_confirm' | 'supplier_skip';
   value?: string;
 }
 
