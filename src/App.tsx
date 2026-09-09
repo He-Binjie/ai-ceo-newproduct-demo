@@ -102,6 +102,7 @@ function App() {
   const [rightTab, setRightTab] = useState<Step>(1);
   const [tongpeiDone, setTongpeiDone] = useState(false);
   const [useAISubset, setUseAISubset] = useState(false);
+  const [jumpedTab, setJumpedTab] = useState<Step | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-switch right tab when step changes
@@ -238,9 +239,11 @@ function App() {
     // 参数调整识别 — 自动定位到对应step并重新引导计算
     const paramResult = parseParameterAdjustment(text);
     if (paramResult) {
-      // 自动定位到对应step的右侧面板
+      // 自动定位到对应step的右侧面板 + 跳转动画
       if (paramResult.targetStep > 0 && step >= paramResult.targetStep) {
         setRightTab(paramResult.targetStep);
+        setJumpedTab(paramResult.targetStep);
+        setTimeout(() => setJumpedTab(null), 2000);
       }
       setIsTyping(true);
       setTimeout(() => {
@@ -540,10 +543,11 @@ function App() {
                   const isActive = rightTab === tabStep;
                   const isCompleted = step > tabStep;
                   const isAccessible = step >= tabStep;
+                  const isJumped = jumpedTab === tabStep;
                   return (
                     <button
                       key={tabStep}
-                      className={`right-tab ${isActive ? 'active' : ''} ${isCompleted ? 'completed' : ''} ${!isAccessible ? 'disabled' : ''}`}
+                      className={`right-tab ${isActive ? 'active' : ''} ${isCompleted ? 'completed' : ''} ${!isAccessible ? 'disabled' : ''} ${isJumped ? 'jumped' : ''}`}
                       onClick={() => { if (isAccessible) setRightTab(tabStep); }}
                       disabled={!isAccessible}
                     >
@@ -792,7 +796,7 @@ function RightStep2CoefficientsAndBOM({ regions, materials, productInfo, useAISu
               <tr>
                 <th style={{ minWidth: 130 }}>历史品{useAISubset ? '（≥80%）' : ''}</th>
                 {regions.map(r => (
-                  <th key={r.subsidiary} className="num" style={{ minWidth: 56 }}>{r.subsidiary.replace('子公司', '')}</th>
+                  <th key={r.subsidiary} className="num" style={{ minWidth: 72 }}>{r.subsidiary}</th>
                 ))}
               </tr>
             </thead>

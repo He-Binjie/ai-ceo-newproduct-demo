@@ -762,6 +762,16 @@ body {
   cursor: not-allowed;
 }
 
+.right-tab.jumped {
+  animation: tab-jump 2s ease-out;
+}
+
+@keyframes tab-jump {
+  0% { background: rgba(0, 85, 255, 0.25); box-shadow: 0 0 12px rgba(0, 85, 255, 0.4); }
+  30% { background: rgba(0, 85, 255, 0.15); box-shadow: 0 0 8px rgba(0, 85, 255, 0.2); }
+  100% { background: transparent; box-shadow: none; }
+}
+
 .right-tab-num {
   width: 20px;
   height: 20px;
