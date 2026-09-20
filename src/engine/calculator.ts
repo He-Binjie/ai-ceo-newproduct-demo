@@ -1,5 +1,5 @@
-// 计算引擎 - 真实计算函数
-// 用于门店预测、仓库聚合、预警检查
+// 计算引擎 - 真实计算函数（V2 - 9/9会议修正：预警公式+多品聚合）
+// 用于门店预测、仓库聚合、预警检查、多品物料聚合
 
 import type { BOMRecord, RegionCoefficient, StoreForecast, WarehouseAggregation, WarehouseMaterialAgg, Warning } from '../types';
 
@@ -162,40 +162,52 @@ export function aggregateToWarehouse(forecasts: StoreForecast[], materials: BOMR
 }
 
 /**
- * 检查预警条件
- * @param totalCups - 总预测杯数
- * @param gmvTarget - GMV目标
+ * 检查预警条件（9/9修正：备货偏差 = 分仓计算值 vs 理论需求量）
+ * 理论需求量 = 纯预测杯量 × 用量（不带区域系数、不带备货系数）
+ * 分仓计算值 = 经过区域系数、备货系数、MOQ取整等修正后的当前备货量
+ * @param totalCups - 总预测杯数（带系数）
+ * @param theoreticalCups - 理论杯数（不带系数）
  * @param aggregations - 仓库聚合数据
  * @param materials - BOM物料列表
  */
 export function checkWarnings(
   totalCups: number,
-  gmvTarget: number,
+  theoreticalCups: number,
   aggregations: WarehouseAggregation[],
   materials: BOMRecord[],
 ): Warning[] {
   const warnings: Warning[] = [];
 
-  // 1. 杯数预警：总杯数是否达标
-  const expectedCups = gmvTarget / 20; // 假设均价20元/杯
-  const cupDeviation = (totalCups - expectedCups) / expectedCups;
-  if (cupDeviation < -0.1) {
+  // 1. 备货偏差预警：分仓计算值 vs 理论需求量（9/9修正）
+  // 理论需求量 = 纯预测杯量 × 用量（不带任何系数）
+  // 分仓计算值 = 经过区域系数、备货系数、MOQ取整后的当前备货量
+  const deviation = theoreticalCups > 0 ? (totalCups - theoreticalCups) / theoreticalCups : 0;
+  if (Math.abs(deviation) > 0.15) {
     warnings.push({
       level: 'red',
-      type: 'cup_shortfall',
-      message: `预测总杯数(${totalCups})低于目标(${Math.round(expectedCups)})，偏差${(cupDeviation * 100).toFixed(1)}%`,
-      deviation: cupDeviation,
-      threshold: -0.1,
-      suggestion: '建议提高杯占比或增加门店覆盖',
+      type: 'stock_deviation',
+      message: `备货偏差 ${(deviation * 100).toFixed(1)}%（分仓计算值${totalCups} vs 理论需求量${theoreticalCups}），超阈值`,
+      deviation,
+      threshold: 0.15,
+      suggestion: '建议检查区域系数和备货系数是否合理，可尝试调参后重算',
     });
-  } else if (cupDeviation < -0.05) {
+  } else if (Math.abs(deviation) > 0.10) {
     warnings.push({
       level: 'yellow',
-      type: 'cup_shortfall',
-      message: `预测总杯数略低于目标，偏差${(cupDeviation * 100).toFixed(1)}%`,
-      deviation: cupDeviation,
-      threshold: -0.05,
-      suggestion: '可关注区域系数调整',
+      type: 'stock_deviation',
+      message: `备货偏差 ${(deviation * 100).toFixed(1)}%（分仓计算值 vs 理论需求量），接近阈值`,
+      deviation,
+      threshold: 0.10,
+      suggestion: '可关注区域系数调整，确认系数推荐是否合理',
+    });
+  } else {
+    warnings.push({
+      level: 'green',
+      type: 'stock_deviation',
+      message: `备货偏差 ${(deviation * 100).toFixed(1)}% ✅（分仓计算值 vs 理论需求量）`,
+      deviation,
+      threshold: 0.10,
+      suggestion: '偏差在合理范围内',
     });
   }
 
@@ -242,6 +254,40 @@ export function checkWarnings(
   });
 
   return warnings;
+}
+
+/**
+ * 多品物料聚合（9/9新增：同系列多品的共用物料合并计算）
+ * @param allMaterials - 所有新品的BOM物料（含多个品）
+ * @returns 按物料编码聚合后的物料列表，标注来源品
+ */
+export function aggregateMultiProductMaterials(
+  allMaterials: BOMRecord[],
+): { materialCode: string; materialName: string; sourceProducts: string[]; totalUsage: number; isShared: boolean }[] {
+  const materialMap = new Map<string, { materialName: string; sourceProducts: Set<string>; totalUsage: number }>();
+
+  allMaterials.filter(m => m.selected).forEach(mat => {
+    const key = mat.materialCode || mat.materialName; // 编码为空时用名称
+    const existing = materialMap.get(key);
+    if (existing) {
+      existing.sourceProducts.add(mat.productName);
+      existing.totalUsage += mat.unitUsage;
+    } else {
+      materialMap.set(key, {
+        materialName: mat.materialName,
+        sourceProducts: new Set([mat.productName]),
+        totalUsage: mat.unitUsage,
+      });
+    }
+  });
+
+  return Array.from(materialMap.entries()).map(([code, data]) => ({
+    materialCode: code,
+    materialName: data.materialName,
+    sourceProducts: Array.from(data.sourceProducts),
+    totalUsage: data.totalUsage,
+    isShared: data.sourceProducts.size > 1,
+  }));
 }
 
 /**

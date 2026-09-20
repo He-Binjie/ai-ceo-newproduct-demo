@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import './styles.css';
 import type { ChatMessage, NewProductInfo, BOMMaterial, RegionCoefficient, ConfirmAction } from './types';
-import { mockProduct, mockMaterials, mockRegionCoefficients, historicalProducts, historicalProductsDetail, mockStoreSamples, nationalMaterialSummary, warehouseSummarySample, newProductList } from './data/mock';
+import { mockProduct, mockMaterials, mockRegionCoefficients, historicalProducts, historicalProductsDetail, mockStoreSamples, nationalMaterialSummary, newProductList, mockBOMRecordsProduct2, mockSystemDataProduct2, mockWarehouseDistributionCompare, allWarehouseSummary } from './data/mock';
 import { parseIntent } from './engine/nlu';
 
 // 简化为5步
@@ -96,13 +96,16 @@ function App() {
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [activeSkill, setActiveSkill] = useState(SKILLS[0]);
-  const [selectedProduct, setSelectedProduct] = useState<string | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<string[]>([]);
+  const [activeBOMTab, setActiveBOMTab] = useState(0);
   const [skillSelected, setSkillSelected] = useState(false);
   const [showSkillPopup, setShowSkillPopup] = useState(false);
   const [rightTab, setRightTab] = useState<Step>(1);
   const [tongpeiDone, setTongpeiDone] = useState(false);
   const [supplierDone, setSupplierDone] = useState(false);
-  const [useAISubset, setUseAISubset] = useState(false);
+  const [selectedHistoricalProducts, setSelectedHistoricalProducts] = useState<Set<string>>(
+    () => new Set(historicalProductsDetail.map(p => p.name))
+  );
   const [jumpedTab, setJumpedTab] = useState<Step | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
@@ -136,9 +139,20 @@ function App() {
   };
 
   const selectProduct = (productId: string) => {
-    setSelectedProduct(productId);
-    setStep(1);
-    triggerStepMessage(1);
+    setSelectedProduct(prev => {
+      if (prev.includes(productId)) {
+        return prev.filter(id => id !== productId);
+      } else {
+        return [...prev, productId];
+      }
+    });
+  };
+
+  const confirmProductSelection = () => {
+    if (selectedProduct.length > 0) {
+      setStep(1);
+      triggerStepMessage(1);
+    }
   };
 
   const showWelcome = () => {
@@ -158,36 +172,46 @@ function App() {
     switch (s) {
       case 0:
         simulateTyping(
-          `当前有 **4** 个新品在上新周期内（前后2个月），请选择要开始分仓的新品：`,
+          `当前有 **4** 个新品在上新周期内（前后2个月）。\n支持同时选择同系列多个品进行分仓（共用物料会自动聚合计算）。\n请选择要分仓的新品（可多选）：`,
           ['扫描上新周期：2026-06-08 ~ 2026-10-08', '筛选出4个新品（剔除已超期）'],
           [],
           newProductList.map(p => p.name),
         );
         break;
-      case 1:
+      case 1: {
+        const selectedNames = selectedProduct.map(id => newProductList.find(p => p.id === id)?.name || id);
+        const productInfos = selectedProduct.map(id => {
+          if (id === 'np-001') return { name: '铁观音莲雾苹果', firstWeek: 609, firstMonth: 650 };
+          if (id === 'np-002') return { name: '铁观音凤梨白月光', firstWeek: 580, firstMonth: 620 };
+          if (id === 'np-003') return { name: '清沫观音', firstWeek: 520, firstMonth: 560 };
+          if (id === 'np-004') return { name: '蜜桃脱咖茉莉', firstWeek: 450, firstMonth: 480 };
+          return { name: id, firstWeek: 500, firstMonth: 540 };
+        });
+        const productDetails = productInfos.map(p => `📊 **${p.name}**\n• 大盘预测首周日均：**${p.firstWeek}**杯 | 首月日均：**${p.firstMonth}**杯`).join('\n\n');
         simulateTyping(
-          `已从飞书多维表格读取 **${productInfo.name}** 的信息 ✅\n\n📊 **预测杯量**\n• 在营门店数：**${productInfo.storeCount.toLocaleString()}** 家（滚动30天）\n• 大盘预测首周日均：**${productInfo.firstWeekDailyCups}** 杯\n• 大盘预测首月日均：**${productInfo.firstMonthDailyCups}** 杯\n• 全国首周日均总量：**${(productInfo.firstWeekDailyCups * productInfo.storeCount).toLocaleString()}** 杯\n• 全国月日均总量：**${(productInfo.firstMonthDailyCups * productInfo.storeCount).toLocaleString()}** 杯\n\n🏪 **全部门店预测**（详见右侧，支持分页浏览）\n• 北京王府井APM店：首周日均 **1,077.92** 杯\n• 上海南京西路店：首周日均 **1,245.30** 杯\n\n⚠️ 数据一致性校验：首月日均(${productInfo.firstMonthDailyCups}) ≥ 首周日均(${productInfo.firstWeekDailyCups}) ✅`,
+          `已从飞书多维表格读取 **${selectedNames.length}个新品** 的信息 ✅\n\n${productDetails}\n\n🏪 全部门店预测详见右侧（按品分Tab展示）\n\n⚠️ 数据一致性校验：首月日均 ≥ 首周日均 ✅`,
           ['读取飞书多维表格：新品基础信息表', '系统自动获取：滚动30天在营门店数', '抓取成品销售报表：7,188家门店', '计算门店销量占比 + 下限保护'],
           [{ label: '✅ 确认，继续', type: 'confirm' }],
         );
         break;
+      }
       case 2:
         simulateTyping(
-          `系数修正 + BOM拆解完成 ✅\n\n📐 **区域系数**（${historicalProducts.length}个历史品均值）\n• 24个子公司：**8个兜底为1.0**，最高 **湖北(1.196)**\n\n💡 **AI推荐：选择以下15个历史品（相似度≥80%）可使系数更精准**\n\n| 品名 | 品类 | 相似度 | 推荐理由 |\n|------|------|--------|----------|\n| 夏梦玫珑 | 果茶 | 92% | 果茶品类最高相似，区域分布一致 |\n| 小森林柚子 | 果茶 | 91% | 果茶+夏季上新，杯量曲线高度吻合 |\n| 肉桂橙大红袍 | 特调茶 | 90% | 特调茶基底相同，区域系数分布接近 |\n| 晴天罗勒桃 | 果茶 | 89% | 果茶品类，门店覆盖度相似 |\n| 白雾红尘 | 特调茶 | 88% | 特调茶经典品，达标率稳定 |\n| 诶？橙柚康普 | 果茶 | 88% | 果茶+创新品类，区域表现参考性强 |\n| 草莓云顶大红袍 | 特调茶 | 87% | 同系列品，区域系数方差小 |\n| 芒果云顶大红袍 | 特调茶 | 86% | 同系列品，达标率均值高 |\n| 嘿！菠萝马黛 | 果茶 | 86% | 果茶品类，夏季上新节奏一致 |\n| 归云南·云漫普洱 | 特调茶 | 85% | 特调茶+茶基底相似 |\n| 蜜瓜开心果椰 | 特调茶 | 84% | 特调茶+复合风味，区域分布参考 |\n| 龙井玄米酪 | 特调茶 | 83% | 特调茶品类，达标率中位数接近 |\n| 归云南·云卷松风 | 特调茶 | 82% | 同系列品，区域表现一致 |\n| 耶～抹茶龙井 | 特调茶 | 81% | 茶基底相似，区域系数参考 |\n| 归云南 | 特调茶 | 80% | 同系列基准品，兜底参考 |\n\n排除轻因系列（4个，相似度63%-70%，品类差异大）。\n\n📦 **BOM拆解 → 物料需求**（${materials.filter(m=>m.selected).length}种核心物料）\n详见右侧面板。\n\n🧮 **物料量计算示例**（门店1101010005 × 莲雾苹果汁）\n\`\`\`\nW1 = 1077.92 × 1.2 × 0.05 × 7 ÷ 11.41 × 1.1 = 43.64\n预测总量 = Roundup(W1+W2+W3+W4) ✅\n\`\`\`\n\n全部计算公式和区域系数详见右侧面板。`,
+          `系数修正 + BOM拆解完成 ✅\n\n📐 **区域系数**（${historicalProducts.length}个历史品上新前两周实际销量占比比值）\n• 24个子公司：**8个兜底为1.0**，最高 **湖北(1.196)**\n• 基于上新前两周实际销售数据（不用预估数据）\n\n💡 **AI推荐：选择以下15个历史品（相似度≥80%）可使系数更精准**\n\n| 品名 | 品类 | 相似度 | 推荐理由 |\n|------|------|--------|----------|\n| 夏梦玫珑 | 果茶 | 92% | 果茶品类最高相似，区域分布一致 |\n| 小森林柚子 | 果茶 | 91% | 果茶+夏季上新，杯量曲线高度吻合 |\n| 肉桂橙大红袍 | 特调茶 | 90% | 特调茶基底相同，区域系数分布接近 |\n| 晴天罗勒桃 | 果茶 | 89% | 果茶品类，门店覆盖度相似 |\n| 白雾红尘 | 特调茶 | 88% | 特调茶经典品，实际占比比值稳定 |\n| 诶？橙柚康普 | 果茶 | 88% | 果茶+创新品类，区域表现参考性强 |\n| 草莓云顶大红袍 | 特调茶 | 87% | 同系列品，区域系数方差小 |\n| 芒果云顶大红袍 | 特调茶 | 86% | 同系列品，实际占比比值均值高 |\n| 嘿！菠萝马黛 | 果茶 | 86% | 果茶品类，夏季上新节奏一致 |\n| 归云南·云漫普洱 | 特调茶 | 85% | 特调茶+茶基底相似 |\n| 蜜瓜开心果椰 | 特调茶 | 84% | 特调茶+复合风味，区域分布参考 |\n| 龙井玄米酪 | 特调茶 | 83% | 特调茶品类，实际占比比值中位数接近 |\n| 归云南·云卷松风 | 特调茶 | 82% | 同系列品，区域表现一致 |\n| 耶～抹茶龙井 | 特调茶 | 81% | 茶基底相似，区域系数参考 |\n| 归云南 | 特调茶 | 80% | 同系列基准品，兜底参考 |\n\n排除轻因系列（4个，相似度63%-70%，品类差异大）。\n\n📦 **BOM拆解 → 物料需求**（${materials.filter(m=>m.selected).length}种核心物料）\n详见右侧面板。\n\n🧮 **物料量计算示例**（门店1101010005 × 莲雾苹果汁）\n\`\`\`\nW1 = 1077.92 × 1.2 × 0.05 × 7 ÷ 11.41 × 1.1 = 43.64\n预测总量 = Roundup(W1+W2+W3+W4) ✅\n\`\`\`\n\n全部计算公式和区域系数详见右侧面板。`,
           ['计算24个子公司区域系数（兜底<1.0→1.0）', 'BOM拆解：4种物料 × W1-W4', '核心公式：逐门店逐物料计算', 'Roundup向上取整 + 效期校验'],
           [{ label: '✅ 确认，继续', type: 'confirm' }, { label: '✏️ 使用AI推荐子集', type: 'edit' }],
         );
         break;
       case 3:
         simulateTyping(
-          `汇总到仓 + 预警检查完成 ✅\n\n🏭 **汇总到仓**（仓店映射9,708条）\n• 北京二级仓：莲雾苹果汁 **13,399** 瓶\n• 详见右侧各仓库汇总\n\n📊 **预警检查（物料维度）**\n• 安溪铁观音：备货偏差 5.2% ✅ ｜ MOQ 0.03% ✅ ｜ 安库 20.3天 ✅\n• 莲雾苹果汁：备货偏差 8.6% ✅ ｜ MOQ 0.055% ✅ ｜ 安库 17.2天 ✅\n• 冷冻生椰乳：备货偏差 **12.1%** ❌ 超阈值 ｜ MOQ 0.18% ✅ ｜ 安库 11.8天 ✅\n• 东方美人乌龙茶-A：备货偏差 3.8% ✅ ｜ MOQ 0.24% ✅ ｜ 安库 20.0天 ✅\n\n📦 **供应商数据**\n供应商分配数据是否已确认？确认后我将进行份额分配与MOQ取整。\n\n💡 **如需调整参数，可直接输入：**\n• "调整区域系数 湖北 1.1"\n• "调整备货系数 莲雾苹果汁 1.2"\n• "调整W1占比 0.06"\n• "安全库存改成7天"\n• 输入"帮助"查看完整参数清单`,
+          `汇总到仓 + 预警检查完成 ✅\n\n🏭 **汇总到仓**（仓店映射9,708条）\n• 北京二级仓：莲雾苹果汁 **13,399** 瓶\n• 详见右侧各仓库汇总\n\n📊 **预警检查（物料维度）**\n• 安溪铁观音：备货偏差 5.2%（分仓计算值 vs 理论需求量） ✅ ｜ MOQ 0.03% ✅ ｜ 安库 20.3天 ✅\n• 莲雾苹果汁：备货偏差 8.6%（分仓计算值 vs 理论需求量） ✅ ｜ MOQ 0.055% ✅ ｜ 安库 17.2天 ✅\n• 冷冻生椰乳：备货偏差 **12.1%**（分仓计算值 vs 理论需求量） ❌ 超阈值 ｜ MOQ 0.18% ✅ ｜ 安库 11.8天 ✅\n• 东方美人乌龙茶-A：备货偏差 3.8%（分仓计算值 vs 理论需求量） ✅ ｜ MOQ 0.24% ✅ ｜ 安库 20.0天 ✅\n\n📦 **仓级统配对比**\n• 湖北一级仓：偏差 12.6% ⚠️ 异常\n• 浙江一级仓：偏差 14.1% ⚠️ 异常\n• 其余6仓均在10%以内 ✅\n\n📦 **供应商数据**\n供应商分配数据是否已确认？确认后我将进行份额分配与MOQ取整。\n\n💡 **如需调整参数，可直接输入：**\n• "调整区域系数 湖北 1.1"\n• "调整备货系数 莲雾苹果汁 1.2"\n• "调整W1占比 0.06"\n• "安全库存改成7天"\n• 输入"帮助"查看完整参数清单`,
           ['读取仓店映射Sheet2：9,708条', '按仓库汇总门店物料量', '备货偏差/ MOQ取整/安全库存三道预警（物料维度）'],
           [{ label: '✅ 供应商数据已确认', type: 'supplier_confirm' }, { label: '⏸️ 供应商数据未到，暂停', type: 'supplier_skip' }, { label: '🔄 调参重跑', type: 'recalculate' }],
         );
         break;
       case 4:
         simulateTyping(
-          `🎉 **分仓备货方案生成完成！**\n\n📊 **全国物料最终方案**\n• 安溪铁观音：66,285 箱\n• 莲雾苹果汁：363,540 瓶\n• 冷冻生椰乳：138,345 瓶\n• 东方美人乌龙茶-A：28,655 袋\n\n📋 预警汇总：全部通过 ✅\n⚠️ 异常统配门店：12家（已标记）\n\n📥 导出Excel包含 **5个Sheet**：\n• Sheet1: 门店明细\n• Sheet2: 仓库汇总\n• Sheet3: 供应商分配\n• Sheet4: 预警清单\n• Sheet5: SCM导入模板`,
+          `🎉 **分仓备货方案生成完成！**\n\n📊 **全国物料最终方案**\n• 安溪铁观音：66,285 箱\n• 莲雾苹果汁：363,540 瓶\n• 冷冻生椰乳：138,345 瓶\n• 东方美人乌龙茶-A：28,655 袋\n\n📋 预警汇总：全部通过 ✅\n⚠️ 异常统配门店：12家（已标记）\n\n📥 导出Excel包含 **6个Sheet**：\n• Sheet1: 门店明细\n• Sheet2: 仓库汇总\n• Sheet3: 供应商分配\n• Sheet4: 预警清单\n• Sheet5: SCM导入模板\n• Sheet6: 仓级统配对比`,
           [],
           [{ label: '📥 导出Excel', type: 'export' }, { label: '📤 发送给相关人', type: 'notify' }, { label: '🔄 修改参数重跑', type: 'recalculate' }],
         );
@@ -285,7 +309,7 @@ function App() {
     switch (type) {
       case 'confirm': {
         if (step === 0) {
-          addBotMessage('请先选择一个新品。');
+          addBotMessage('请先选择至少一个新品，然后点击"开始分仓"按钮。');
         } else {
           confirmStep(step);
         }
@@ -307,7 +331,7 @@ function App() {
       }
       case 'export_excel': {
         addBotMessage(
-          `📥 Excel 导出完成！\n\n文件名：**${productInfo.name}_分仓备货预测_${productInfo.launchDate}.xlsx**\n\n包含5个Sheet：\n• Sheet1: 门店明细（${productInfo.storeCount.toLocaleString()}门店 × ${materials.filter(m=>m.selected).length}物料 × W1-W4）\n• Sheet2: 仓库汇总（30+仓库）\n• Sheet3: 供应商分配\n• Sheet4: 预警清单\n• Sheet5: SCM导入模板\n\n✅ 文件已保存到下载目录。\n✅ Sheet5可直接导入SCM系统。`,
+          `📥 Excel 导出完成！\n\n文件名：**${productInfo.name}_分仓备货预测_${productInfo.launchDate}.xlsx**\n\n包含6个Sheet：\n• Sheet1: 门店明细（${productInfo.storeCount.toLocaleString()}门店 × ${materials.filter(m=>m.selected).length}物料 × W1-W4）\n• Sheet2: 仓库汇总（30+仓库）\n• Sheet3: 供应商分配\n• Sheet4: 预警清单\n• Sheet5: SCM导入模板\n• Sheet6: 仓级统配对比\n\n✅ 文件已保存到下载目录。\n✅ Sheet5可直接导入SCM系统。`,
           thinking,
         );
         break;
@@ -415,11 +439,22 @@ function App() {
                   <div className="chat-bubble">{formatMessage(msg.content)}</div>
                   {msg.chips && msg.chips.length > 0 && (
                     <div className="chips-row">
-                      {msg.chips.map((chip, i) => (
-                        <button key={i} className="chip-btn" onClick={() => handleUserInput(chip)} disabled={isTyping}>
-                          {chip}
+                      {msg.chips.map((chip, i) => {
+                        const matchedProd = newProductList.find(p => p.name === chip);
+                        const isSelected = matchedProd ? selectedProduct.includes(matchedProd.id) : false;
+                        const isProductChip = !!matchedProd && step === 0;
+                        return (
+                          <button key={i} className={`chip-btn ${isProductChip && isSelected ? 'chip-selected' : ''}`} onClick={() => handleUserInput(chip)} disabled={isTyping}>
+                            {isProductChip && <span style={{ marginRight: 4 }}>{isSelected ? '✓' : '☐'}</span>}
+                            {chip}
+                          </button>
+                        );
+                      })}
+                      {step === 0 && msg.chips.some(c => newProductList.find(p => p.name === c)) && (
+                        <button className="chip-btn chip-confirm" onClick={confirmProductSelection} disabled={isTyping || selectedProduct.length === 0} style={{ background: selectedProduct.length > 0 ? 'var(--accent)' : 'var(--border)', color: 'white', fontWeight: 600 }}>
+                          🚀 开始分仓（已选{selectedProduct.length}品）
                         </button>
-                      ))}
+                      )}
                     </div>
                   )}
                   {msg.confirmActions && msg.confirmActions.length > 0 && (
@@ -451,8 +486,8 @@ function App() {
                             else if (action.type === 'skip') {
                               if (step === 3 && !tongpeiDone) {
                                 addBotMessage('⏸️ **统配数据未到，流程暂停**\n\n当前已完成：\n• ✅ 汇总到仓\n• ✅ 供应商分配\n• ✅ 三道预警检查\n\n等待统配数据到达后，输入"统配数据已到"或点击按钮继续。');
-                              } else if (useAISubset) {
-                                setUseAISubset(false);
+                              } else if (selectedHistoricalProducts.size < historicalProductsDetail.length) {
+                                setSelectedHistoricalProducts(new Set(historicalProductsDetail.map(p => p.name)));
                                 simulateTyping(
                                   '↩️ 已恢复使用 **全部23个历史品** 计算区域系数。\n\n右侧面板已更新，请确认。',
                                   ['恢复全部23个历史品', '重新计算24个子公司区域系数均值'],
@@ -465,10 +500,13 @@ function App() {
                             }
                             else if (action.type === 'edit') {
                               if (step === 2) {
-                                setUseAISubset(true);
+                                const aiSubset = new Set(
+                                  historicalProductsDetail.filter(p => p.similarity >= 0.80).map(p => p.name)
+                                );
+                                setSelectedHistoricalProducts(aiSubset);
                                 setRightTab(2);
                                 simulateTyping(
-                                  `✅ 已切换为 **AI推荐子集**（15个历史品，相似度≥80%）\n\n区域系数已重新计算，详见右侧面板。\n\n排除的历史品（8个，相似度<80%）：\n• 轻因·云游栖梦（70%）\n• 轻因·花田乌龙（68%）\n• 轻因·伯牙绝弦（65%）\n• 轻因·云栖梦（63%）\n• 一抹山月（78%）\n• 月抹静山（75%）\n• 醒时春山（76%）\n• 海上雾奇兰（72%）`,
+                                  `✅ 已切换为 **AI推荐子集**（${aiSubset.size}个历史品，相似度≥80%）\n\n区域系数已重新计算，详见右侧面板。\n\n你可以在右侧面板中逐个勾选/取消历史品，进一步微调选择。`,
                                   ['筛选相似度≥80%的历史品：15个', '重新计算24个子公司区域系数均值', '右侧面板已更新'],
                                   [{ label: '✅ 确认，继续', type: 'confirm' }, { label: '↩️ 恢复全部23品', type: 'skip' }],
                                 );
@@ -562,8 +600,8 @@ function App() {
 
         {/* Right: Data Display Only with Tabs */}
         <div className="right-panel">
-          {!selectedProduct && <RightEmptyState />}
-          {selectedProduct && (
+          {selectedProduct.length === 0 && <RightEmptyState />}
+          {selectedProduct.length > 0 && (
             <>
               {/* Tab Navigation */}
               <div className="right-tabs">
@@ -588,8 +626,8 @@ function App() {
               </div>
               {/* Tab Content */}
               <div className="right-tab-content">
-                {rightTab === 1 && <RightStep1CupForecast productInfo={productInfo} materials={materials} />}
-                {rightTab === 2 && <RightStep2CoefficientsAndBOM regions={regions} flooredCount={flooredCount} materials={materials} productInfo={productInfo} useAISubset={useAISubset} />}
+                {rightTab === 1 && <RightStep1CupForecast productInfo={productInfo} materials={materials} selectedProduct={selectedProduct} activeBOMTab={activeBOMTab} setActiveBOMTab={setActiveBOMTab} />}
+                {rightTab === 2 && <RightStep2CoefficientsAndBOM regions={regions} flooredCount={flooredCount} materials={materials} productInfo={productInfo} selectedHistoricalProducts={selectedHistoricalProducts} setSelectedHistoricalProducts={setSelectedHistoricalProducts} selectedProduct={selectedProduct} />}
                 {rightTab === 3 && <RightStep3WarehouseAndWarnings tongpeiDone={tongpeiDone} supplierDone={supplierDone} />}
                 {rightTab === 4 && <RightStep4Output productInfo={productInfo} />}
               </div>
@@ -645,7 +683,7 @@ function RightEmptyState() {
   );
 }
 
-function RightStep1CupForecast({ productInfo, materials }: { productInfo: NewProductInfo; materials: BOMMaterial[] }) {
+function RightStep1CupForecast({ productInfo, materials, selectedProduct, activeBOMTab, setActiveBOMTab }: { productInfo: NewProductInfo; materials: BOMMaterial[]; selectedProduct: string[]; activeBOMTab: number; setActiveBOMTab: (n: number) => void }) {
   const [storePage, setStorePage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const totalStores = mockStoreSamples.length;
@@ -653,16 +691,36 @@ function RightStep1CupForecast({ productInfo, materials }: { productInfo: NewPro
   const startIdx = (storePage - 1) * pageSize;
   const pageStores = mockStoreSamples.slice(startIdx, startIdx + pageSize);
 
+  // Determine which BOM data to show based on active tab
+  const selectedNames = selectedProduct.map(id => newProductList.find(p => p.id === id)?.name || id);
+  const currentBOM = activeBOMTab === 0 ? materials : mockBOMRecordsProduct2.map(m => ({ ...m }));
+  const currentProduct = activeBOMTab === 0 ? productInfo : { ...productInfo, name: '铁观音凤梨白月光', firstWeekDailyCups: mockSystemDataProduct2.firstWeekDailyCups, firstMonthDailyCups: mockSystemDataProduct2.firstMonthDailyCups };
+
   return (
     <div className="animate-in">
       <div className="panel-title"><span className="step-badge">Step 1</span>预测杯量</div>
+
+      {/* 多品Tab切换 */}
+      {selectedProduct.length > 1 && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          {selectedNames.map((name, i) => (
+            <button key={i} onClick={() => setActiveBOMTab(i)} style={{
+              padding: '6px 14px', borderRadius: 6, border: `1px solid ${activeBOMTab === i ? 'var(--accent)' : 'var(--border)'}`,
+              background: activeBOMTab === i ? 'var(--accent-light)' : 'white', color: activeBOMTab === i ? 'var(--accent)' : 'var(--text-muted)',
+              fontWeight: activeBOMTab === i ? 600 : 400, fontSize: 12, cursor: 'pointer',
+            }}>
+              {name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* 新品基础信息表（飞书多维表格） */}
       <div className="card">
         <div className="card-title">📋 新品基础信息表<button className="export-btn">📥 导出</button></div>
         <div className="data-source-tag">数据来源：飞书多维表格「新品BOM」表</div>
         <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
-          新品名称：<strong>{productInfo.name}</strong> ｜ 上新日：<strong>{productInfo.launchDate}</strong> ｜ 共 <strong>{materials.length}</strong> 种原材料
+          新品名称：<strong>{currentProduct.name}</strong> ｜ 上新日：<strong>{currentProduct.launchDate}</strong> ｜ 共 <strong>{currentBOM.length}</strong> 种原材料
         </p>
         <div style={{ overflowX: 'auto' }}>
           <table className="data-table">
@@ -674,7 +732,7 @@ function RightStep1CupForecast({ productInfo, materials }: { productInfo: NewPro
               </tr>
             </thead>
             <tbody>
-              {materials.map(m => (
+              {currentBOM.map(m => (
                 <tr key={m.id}>
                   <td style={{ fontWeight: 600 }}>{m.productName}</td>
                   <td style={{ fontSize: 11 }}>{m.launchDate}</td>
@@ -700,9 +758,9 @@ function RightStep1CupForecast({ productInfo, materials }: { productInfo: NewPro
 
       {/* 系统自动获取数据 */}
       <div className="kpi-grid">
-        <div className="kpi-card"><div className="kpi-label">在营门店</div><div className="kpi-value">{productInfo.storeCount.toLocaleString()}<span className="kpi-unit">家</span></div></div>
-        <div className="kpi-card"><div className="kpi-label">首周日均</div><div className="kpi-value">{productInfo.firstWeekDailyCups}<span className="kpi-unit">杯</span></div></div>
-        <div className="kpi-card"><div className="kpi-label">首月日均</div><div className="kpi-value">{productInfo.firstMonthDailyCups}<span className="kpi-unit">杯</span></div></div>
+        <div className="kpi-card"><div className="kpi-label">在营门店</div><div className="kpi-value">{currentProduct.storeCount.toLocaleString()}<span className="kpi-unit">家</span></div></div>
+        <div className="kpi-card"><div className="kpi-label">首周日均</div><div className="kpi-value">{currentProduct.firstWeekDailyCups}<span className="kpi-unit">杯</span></div></div>
+        <div className="kpi-card"><div className="kpi-label">首月日均</div><div className="kpi-value">{currentProduct.firstMonthDailyCups}<span className="kpi-unit">杯</span></div></div>
         <div className="kpi-card"><div className="kpi-label">触发下限保护</div><div className="kpi-value" style={{ color: 'var(--warn)' }}>~200<span className="kpi-unit">家</span></div></div>
       </div>
       <div className="card">
@@ -755,13 +813,30 @@ function RightStep1CupForecast({ productInfo, materials }: { productInfo: NewPro
   );
 }
 
-function RightStep2CoefficientsAndBOM({ regions, materials, productInfo, useAISubset }: { regions: RegionCoefficient[]; flooredCount: number; materials: BOMMaterial[]; productInfo: NewProductInfo; useAISubset: boolean }) {
-  // Filter products based on AI subset
+function RightStep2CoefficientsAndBOM({ regions, materials, productInfo, selectedHistoricalProducts, setSelectedHistoricalProducts, selectedProduct }: { regions: RegionCoefficient[]; flooredCount: number; materials: BOMMaterial[]; productInfo: NewProductInfo; selectedHistoricalProducts: Set<string>; setSelectedHistoricalProducts: React.Dispatch<React.SetStateAction<Set<string>>>; selectedProduct: string[] }) {
+  // Filter products based on selected set
   const filteredProducts = useMemo(() => {
-    return useAISubset
-      ? historicalProductsDetail.filter(p => p.similarity >= 0.80)
-      : historicalProductsDetail;
-  }, [useAISubset]);
+    return historicalProductsDetail.filter(p => selectedHistoricalProducts.has(p.name));
+  }, [selectedHistoricalProducts]);
+
+  const isAllSelected = selectedHistoricalProducts.size === historicalProductsDetail.length;
+  const isAISubset = selectedHistoricalProducts.size < historicalProductsDetail.length && 
+    [...selectedHistoricalProducts].every(name => {
+      const p = historicalProductsDetail.find(hp => hp.name === name);
+      return p && p.similarity >= 0.80;
+    });
+
+  const toggleProduct = (name: string) => {
+    setSelectedHistoricalProducts(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelectedHistoricalProducts(new Set(historicalProductsDetail.map(p => p.name)));
+  const selectAI = () => setSelectedHistoricalProducts(new Set(historicalProductsDetail.filter(p => p.similarity >= 0.80).map(p => p.name)));
 
   // Generate calculation matrix: each product × each subsidiary
   const calcData = useMemo(() => {
@@ -804,8 +879,9 @@ function RightStep2CoefficientsAndBOM({ regions, materials, productInfo, useAISu
       {/* 区域系数 */}
       <div className="card">
         <div className="card-title">
-          📐 区域系数（{filteredProducts.length}个历史品均值）
-          {useAISubset && <span style={{ fontSize: 11, color: 'var(--accent)', marginLeft: 8, background: 'var(--accent-light)', padding: '2px 8px', borderRadius: 4 }}>AI推荐子集</span>}
+          📐 区域系数（{filteredProducts.length}个历史品上新前两周实际销量占比比值）
+          {isAISubset && <span style={{ fontSize: 11, color: 'var(--accent)', marginLeft: 8, background: 'var(--accent-light)', padding: '2px 8px', borderRadius: 4 }}>AI推荐子集</span>}
+          {!isAllSelected && !isAISubset && <span style={{ fontSize: 11, color: 'var(--warn)', marginLeft: 8, background: 'rgba(245,158,11,0.1)', padding: '2px 8px', borderRadius: 4 }}>自定义选择</span>}
           <button className="export-btn">📥 导出</button>
         </div>
         <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
@@ -815,8 +891,29 @@ function RightStep2CoefficientsAndBOM({ regions, materials, productInfo, useAISu
         </div>
 
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.6 }}>
-          <strong>计算公式：</strong>区域系数 = AVG(历史品达标率) = AVG(实际销量 ÷ 预测销量)<br/>
+          <strong>计算公式：</strong>区域系数 = AVG(历史品上新前两周实际销量占比比值) = AVG(子公司新品占比 ÷ 全国新品占比)<br/>
+          <strong>数据来源：</strong>基于上新前两周实际销售数据（不用预估数据）<br/>
           <strong>兜底规则：</strong>若均值 &lt; 1.0 → 取 1.0（防止低估）
+        </div>
+
+        {/* 历史品选择器 */}
+        <div style={{ marginBottom: 12, padding: '10px 12px', background: 'var(--bg-subtle, #f8fafc)', borderRadius: 8, border: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>🔍 历史品选择（已选 {selectedHistoricalProducts.size}/{historicalProductsDetail.length}）</span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <button onClick={selectAI} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 4, border: '1px solid var(--accent)', background: 'var(--accent-light)', color: 'var(--accent)', cursor: 'pointer' }}>AI推荐（≥80%）</button>
+              <button onClick={selectAll} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 4, border: '1px solid var(--border)', background: 'white', cursor: 'pointer' }}>全选</button>
+            </div>
+          </div>
+          <div style={{ maxHeight: 180, overflowY: 'auto', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 12px' }}>
+            {historicalProductsDetail.map(p => (
+              <label key={p.name} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, padding: '3px 0', cursor: 'pointer', opacity: selectedHistoricalProducts.has(p.name) ? 1 : 0.5 }}>
+                <input type="checkbox" checked={selectedHistoricalProducts.has(p.name)} onChange={() => toggleProduct(p.name)} style={{ accentColor: 'var(--accent)' }} />
+                <span style={{ fontWeight: selectedHistoricalProducts.has(p.name) ? 600 : 400 }}>{p.name}</span>
+                <span style={{ fontSize: 10, color: p.similarity >= 0.80 ? 'var(--good)' : p.similarity >= 0.70 ? 'var(--warn)' : 'var(--text-muted)', marginLeft: 'auto' }}>{(p.similarity * 100).toFixed(0)}%</span>
+              </label>
+            ))}
+          </div>
         </div>
 
         {/* 统一表格：所有历史品 × 所有24个子公司 */}
@@ -824,7 +921,7 @@ function RightStep2CoefficientsAndBOM({ regions, materials, productInfo, useAISu
           <table className="data-table calc-table">
             <thead>
               <tr>
-                <th style={{ minWidth: 130 }}>历史品{useAISubset ? '（≥80%）' : ''}</th>
+                <th style={{ minWidth: 130 }}>历史品{isAISubset ? '（≥80%）' : ''}</th>
                 {regions.map(r => (
                   <th key={r.subsidiary} className="num" style={{ minWidth: 72 }}>{r.subsidiary}</th>
                 ))}
@@ -868,12 +965,19 @@ function RightStep2CoefficientsAndBOM({ regions, materials, productInfo, useAISu
       <div className="card">
         <div className="card-title">📦 BOM物料清单（{materials.filter(m => m.selected).length}种核心物料）<button className="export-btn">📥 导出</button></div>
         <div className="data-source-tag">数据来源：飞书多维表格「新品BOM」表</div>
+        {selectedProduct.length > 1 && (
+          <div style={{ fontSize: 12, color: 'var(--warn)', marginBottom: 8, padding: '6px 10px', background: 'rgba(245,158,11,0.06)', borderRadius: 6, lineHeight: 1.6 }}>
+            ⚠️ 以下物料由 {selectedProduct.map(id => `[${newProductList.find(p => p.id === id)?.name || id}]`).join(' ')} {selectedProduct.length}个新品聚合计算，共用物料已合并
+          </div>
+        )}
         <table className="data-table">
           <thead><tr><th>原材料名称</th><th>原材料编码</th><th>规格型号</th><th>单位</th><th className="num">单位用量</th><th>用量单位</th><th className="num">开封效期</th><th className="num">备货系数</th><th className="num">损耗率</th><th className="num">W1杯占</th><th className="num">W2杯占</th><th className="num">W3杯占</th><th className="num">W4杯占</th></tr></thead>
           <tbody>
-            {materials.map(m => (
+            {materials.map(m => {
+              const isShared = selectedProduct.length > 1 && mockBOMRecordsProduct2.some(p2 => p2.materialCode === m.materialCode);
+              return (
               <tr key={m.id} style={{ opacity: m.selected ? 1 : 0.5 }}>
-                <td style={{ fontWeight: 600 }}>{m.materialName}</td>
+                <td style={{ fontWeight: 600 }}>{m.materialName}{isShared && <span style={{ marginLeft: 4, fontSize: 11, color: 'var(--accent)' }}>🔗共用</span>}</td>
                 <td style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{m.materialCode || <span style={{ color: 'var(--warn)' }}>⚠️空</span>}</td>
                 <td style={{ fontSize: 11 }}>{m.spec}</td>
                 <td>{m.unit}</td>
@@ -887,7 +991,8 @@ function RightStep2CoefficientsAndBOM({ regions, materials, productInfo, useAISu
                 <td className="num">{m.cupRatioW3}</td>
                 <td className="num">{m.cupRatioW4}</td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -967,26 +1072,41 @@ function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone }: { tongpei
     <div className="animate-in">
       <div className="panel-title"><span className="step-badge">Step 3</span>汇总到仓 + 供应商 + 预警</div>
 
-      {/* 汇总到仓 */}
+      {/* 汇总到仓 — 全部8仓 */}
       <div className="card">
-        <div className="card-title">🏭 汇总到仓 — 北京二级仓<button className="export-btn">📥 导出</button></div>
-        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>仓店映射来源：Sheet2（9,708条）</p>
-        <table className="data-table">
-          <thead><tr><th>物料</th><th>物料编码</th><th className="num">统配量</th><th className="num">统配外备货量</th><th className="num">合计</th><th className="num">下单量</th><th>单位</th></tr></thead>
-          <tbody>
-            {warehouseSummarySample.materials.map((m, i) => (
-              <tr key={i}>
-                <td style={{ fontWeight: 600 }}>{m.name}</td>
-                <td style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{['20260901-001','20260902-002','20260903-003','0260815-004'][i]}</td>
-                <td className="num">{m.allocationQty.toLocaleString()}</td>
-                <td className="num" style={{ fontWeight: 700 }}>{m.extraStock.toLocaleString()}</td>
-                <td className="num">{m.total.toLocaleString()}</td>
-                <td className="num" style={{ fontWeight: 700, color: 'var(--accent)' }}>{m.orderQty.toLocaleString()}</td>
-                <td style={{ fontSize: 11 }}>{['箱','箱','瓶','箱'][i]}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="card-title">🏭 汇总到仓（8仓汇总）<button className="export-btn">📥 导出</button></div>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>仓店映射来源：dw_store_warehouse_map（WEEK + LEVEL_ONE/LEVEL_TWO，一店一仓）</p>
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+          {allWarehouseSummary.map((wh, wi) => (
+            <span key={wi} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4, background: wi === 0 ? 'var(--accent-light)' : 'var(--bg-subtle, #f8fafc)', color: wi === 0 ? 'var(--accent)' : 'var(--text-muted)', border: '1px solid var(--border)', fontWeight: wi === 0 ? 600 : 400 }}>
+              {wh.warehouseName}（{wh.storeCount}店）
+            </span>
+          ))}
+        </div>
+        {allWarehouseSummary.map((wh, wi) => (
+          <div key={wi} style={{ marginBottom: wi < allWarehouseSummary.length - 1 ? 16 : 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ background: 'var(--accent)', color: 'white', borderRadius: 4, padding: '1px 6px', fontSize: 10 }}>{wh.warehouseName}</span>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>覆盖 {wh.storeCount} 家门店</span>
+            </div>
+            <table className="data-table">
+              <thead><tr><th>物料</th><th>物料编码</th><th className="num">统配量</th><th className="num">统配外备货量</th><th className="num">合计</th><th className="num">下单量</th><th>单位</th></tr></thead>
+              <tbody>
+                {wh.materials.map((m, mi) => (
+                  <tr key={mi}>
+                    <td style={{ fontWeight: 600 }}>{m.name}</td>
+                    <td style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{['20260901-001','20260902-002','20260903-003','0260815-004'][mi]}</td>
+                    <td className="num">{m.allocationQty.toLocaleString()}</td>
+                    <td className="num" style={{ fontWeight: 700 }}>{m.extraStock.toLocaleString()}</td>
+                    <td className="num">{m.total.toLocaleString()}</td>
+                    <td className="num" style={{ fontWeight: 700, color: 'var(--accent)' }}>{m.orderQty.toLocaleString()}</td>
+                    <td style={{ fontSize: 11 }}>{m.unit}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ))}
       </div>
 
       {/* 供应商 */}
@@ -1018,7 +1138,7 @@ function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone }: { tongpei
       <div className="card" style={{ borderColor: 'var(--good)', background: 'rgba(34,197,94,0.04)' }}>
         <div className="card-title" style={{ color: 'var(--good)' }}>📊 三道预警检查（物料维度）<button className="export-btn">📥 导出</button></div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.6 }}>
-          备货偏差阈值：10% ｜ MOQ取整偏差阈值：5% ｜ 安全库存阈值：≥5天
+          备货偏差阈值：10%（分仓计算值 vs 理论需求量，不带系数） ｜ MOQ取整偏差阈值：5% ｜ 安全库存阈值：≥5天
         </div>
         <table className="data-table warning-table">
           <thead>
@@ -1026,7 +1146,7 @@ function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone }: { tongpei
               <th>物料</th>
               <th className="num">预测量</th>
               <th className="num">下单量</th>
-              <th className="num">备货偏差</th>
+              <th className="num">备货偏差<br/><span style={{ fontSize: 10, fontWeight: 400 }}>（分仓计算值 vs 理论需求量）</span></th>
               <th>状态</th>
               <th className="num">MOQ取整偏差</th>
               <th>状态</th>
@@ -1051,8 +1171,40 @@ function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone }: { tongpei
           </tbody>
         </table>
         <div style={{ marginTop: 8, fontSize: 12, display: 'flex', gap: 16 }}>
-          <span style={{ color: 'var(--warn)' }}>⚠️ 冷冻生椰乳备货偏差 12.1% 超阈值，建议关注</span>
+          <span style={{ color: 'var(--warn)' }}>⚠️ 冷冻生椰乳备货偏差 12.1%（分仓计算值 vs 理论需求量）超阈值，建议关注</span>
         </div>
+      </div>
+
+      {/* 仓级统配对比 */}
+      <div className="card">
+        <div className="card-title">📦 仓级统配对比<button className="export-btn">📥 导出</button></div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.6 }}>
+          预测统配量（分仓计算值）vs 实际统配量（SCM下发），偏差 &gt; 10% 标记为异常
+        </div>
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>仓库名</th>
+              <th className="num">预测统配量</th>
+              <th className="num">实际统配量</th>
+              <th className="num">差异（绝对值）</th>
+              <th className="num">差异（%）</th>
+              <th>状态</th>
+            </tr>
+          </thead>
+          <tbody>
+            {mockWarehouseDistributionCompare.map((w, i) => (
+              <tr key={i} style={{ background: w.isAbnormal ? 'rgba(245,158,11,0.04)' : undefined }}>
+                <td style={{ fontWeight: 600 }}>{w.warehouseName}</td>
+                <td className="num">{w.forecastQty.toLocaleString()}</td>
+                <td className="num">{w.actualQty.toLocaleString()}</td>
+                <td className="num" style={{ color: w.isAbnormal ? 'var(--warn)' : 'var(--text-muted)' }}>{w.deviation.toLocaleString()}</td>
+                <td className="num" style={{ color: w.isAbnormal ? 'var(--warn)' : 'var(--good)', fontWeight: 700 }}>{w.deviationPct}%</td>
+                <td>{w.isAbnormal ? <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, background: 'rgba(245,158,11,0.1)', color: 'var(--warn)' }}>⚠️ 异常</span> : <span style={{ color: 'var(--good)' }}>✅</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       {/* 统配比对 */}
@@ -1278,7 +1430,7 @@ function RightStep4Output({ productInfo }: { productInfo: NewProductInfo }) {
 
       {/* 导出清单 */}
       <div className="card">
-        <div className="card-title">📥 导出Excel（5个Sheet）</div>
+        <div className="card-title">📥 导出Excel（6个Sheet）</div>
         <table className="data-table">
           <thead><tr><th>Sheet</th><th>内容</th><th className="num">行数</th><th>说明</th></tr></thead>
           <tbody>
@@ -1287,6 +1439,7 @@ function RightStep4Output({ productInfo }: { productInfo: NewProductInfo }) {
             <tr><td style={{ fontWeight: 600 }}>Sheet3</td><td>供应商分配</td><td className="num">6条</td><td style={{ fontSize: 11 }}>供应商份额+MOQ取整</td></tr>
             <tr><td style={{ fontWeight: 600 }}>Sheet4</td><td>预警清单</td><td className="num">4物料 × 3预警</td><td style={{ fontSize: 11 }}>三道预警计算明细</td></tr>
             <tr><td style={{ fontWeight: 600 }}>Sheet5</td><td>SCM导入模板</td><td className="num">—</td><td style={{ fontSize: 11 }}>可直接导入SCM系统</td></tr>
+            <tr><td style={{ fontWeight: 600 }}>Sheet6</td><td>仓级统配对比</td><td className="num">8仓</td><td style={{ fontSize: 11 }}>预测统配 vs 实际统配，异常标记</td></tr>
           </tbody>
         </table>
       </div>

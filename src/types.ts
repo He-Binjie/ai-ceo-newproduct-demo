@@ -1,4 +1,16 @@
-// 新品分仓备货 Demo 类型定义（V3 - 对齐向磊飞书多维表格模板）
+// 新品分仓备货 Demo 类型定义（V4 - 9/9会议修正：多品+预警+统配仓级视图）
+
+// ===== 新品列表项（支持多品选择） =====
+export interface NewProductItem {
+  id: string;
+  name: string;
+  launchDate: string;
+  status: '进行中' | '计划中';
+  stage: string;
+  productLevel: string;
+  scope: string;
+  seriesId: string;  // 同系列品共享相同seriesId，用于多品聚合
+}
 
 // ===== 飞书多维表格：新品BOM（1张扁平表，每行=一个新品下的一个原材料） =====
 export interface BOMRecord {
@@ -100,6 +112,8 @@ export interface WarehouseMaterialAgg {
   total: number;
   orderQty: number;
   sellableDays: number;
+  sourceProducts?: string[];  // 9/9新增：标注该物料来自哪些新品（多品聚合时展示）
+  theoreticalQty?: number;    // 9/9新增：理论需求量（不带系数，用于预警偏差计算）
 }
 
 export interface SupplierAllocation {
@@ -116,6 +130,16 @@ export interface UnifiedDistribution {
   storeName: string;
   warehouse: string;
   materials: { name: string; qty: number }[];
+}
+
+// ===== 仓级统配聚合（9/9新增：统配异常按仓维度展示） =====
+export interface WarehouseDistributionCompare {
+  warehouseName: string;
+  forecastQty: number;      // 预测统配量
+  actualQty: number;         // 实际统配量
+  deviation: number;         // 差异（绝对值）
+  deviationPct: number;      // 差异（百分比）
+  isAbnormal: boolean;       // 是否异常（预测>统配）
 }
 
 export interface Warning {
@@ -147,12 +171,14 @@ export type WizardStep = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
 
 export interface WizardState {
   currentStep: WizardStep;
+  selectedProducts: string[];  // 9/9：支持多品选择（替代单选）
   bomRecords: BOMRecord[];
   systemData: SystemData;
   regionCoefficients: RegionCoefficient[];
   storeForecasts: StoreForecast[];
   warehouseAggregations: WarehouseAggregation[];
   supplierAllocations: SupplierAllocation[];
+  warehouseDistributionCompare?: WarehouseDistributionCompare[];  // 9/9新增
   warnings: Warning[];
   confirmed: boolean;
 }

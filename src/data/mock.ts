@@ -1,12 +1,12 @@
-// 向磊飞书多维表格模板数据（V3 - 1张扁平表「新品BOM」）
-import type { BOMRecord, NewProductInfo, RegionCoefficient, StoreForecast, UnifiedDistribution } from '../types';
+// 向磊飞书多维表格模板数据（V4 - 9/9会议修正：多品+预警+统配仓级视图）
+import type { BOMRecord, NewProductInfo, RegionCoefficient, StoreForecast, UnifiedDistribution, WarehouseDistributionCompare } from '../types';
 
 // ===== 新品列表（Step 0 选择用） =====
 export const newProductList = [
-  { id: 'np-001', name: '铁观音莲雾苹果', launchDate: '2026-09-15', status: '进行中' as const, stage: 'Step 1 信息读取', productLevel: 'S级', scope: '全国' },
-  { id: 'np-002', name: '铁观音凤梨白月光', launchDate: '2026-09-15', status: '进行中' as const, stage: '未开始', productLevel: 'A级', scope: '全国' },
-  { id: 'np-003', name: '清沫观音', launchDate: '2026-10-01', status: '计划中' as const, stage: '未开始', productLevel: 'A级', scope: '全国' },
-  { id: 'np-004', name: '蜜桃脱咖茉莉', launchDate: '2026-10-15', status: '计划中' as const, stage: '未开始', productLevel: 'B级', scope: '区域' },
+  { id: 'np-001', name: '铁观音莲雾苹果', launchDate: '2026-09-15', status: '进行中' as const, stage: 'Step 1 信息读取', productLevel: 'S级', scope: '全国', seriesId: 'series-tieguanyin' },
+  { id: 'np-002', name: '铁观音凤梨白月光', launchDate: '2026-09-15', status: '进行中' as const, stage: '未开始', productLevel: 'A级', scope: '全国', seriesId: 'series-tieguanyin' },
+  { id: 'np-003', name: '清沫观音', launchDate: '2026-10-01', status: '计划中' as const, stage: '未开始', productLevel: 'A级', scope: '全国', seriesId: 'series-qingmo' },
+  { id: 'np-004', name: '蜜桃脱咖茉莉', launchDate: '2026-10-15', status: '计划中' as const, stage: '未开始', productLevel: 'B级', scope: '区域', seriesId: 'series-mitao' },
 ];
 
 // ===== 飞书多维表格：新品BOM（向磊模板，15字段，对齐真实表格） =====
@@ -88,6 +88,75 @@ export const mockBOMRecords: BOMRecord[] = [
     selected: true,
   },
 ];
+
+// ===== 第二品BOM（铁观音凤梨白月光，与第一品共用安溪铁观音） =====
+export const mockBOMRecordsProduct2: BOMRecord[] = [
+  {
+    id: 'recP2-001',
+    productName: '铁观音凤梨白月光',
+    launchDate: '2026-09-15',
+    materialName: '安溪铁观音',  // 共用物料
+    materialCode: '20260901-001',
+    spec: '50g/包×50包/箱',
+    unit: '箱',
+    unitUsage: 4,
+    usageUnit: 'g',
+    shelfLifeDays: 7,
+    stockCoefficient: 1.0,
+    lossRate: 0.01,
+    cupRatioW1: 0.04,
+    cupRatioW2: 0.03,
+    cupRatioW3: 0.02,
+    cupRatioW4: 0.01,
+    selected: true,
+  },
+  {
+    id: 'recP2-002',
+    productName: '铁观音凤梨白月光',
+    launchDate: '2026-09-15',
+    materialName: '冷冻凤梨汁',
+    materialCode: '20260904-005',
+    spec: '1kg/瓶×12瓶/箱',
+    unit: '箱',
+    unitUsage: 20,
+    usageUnit: 'g',
+    shelfLifeDays: 14,
+    stockCoefficient: 1.05,
+    lossRate: 0.02,
+    cupRatioW1: 0.04,
+    cupRatioW2: 0.03,
+    cupRatioW3: 0.02,
+    cupRatioW4: 0.01,
+    selected: true,
+  },
+  {
+    id: 'recP2-003',
+    productName: '铁观音凤梨白月光',
+    launchDate: '2026-09-15',
+    materialName: '冷冻生椰乳',  // 共用物料
+    materialCode: '20260903-003',
+    spec: '1kg/瓶×15瓶/箱',
+    unit: '瓶',
+    unitUsage: 15,
+    usageUnit: 'g',
+    shelfLifeDays: 9,
+    stockCoefficient: 1.15,
+    lossRate: 0.02,
+    cupRatioW1: 0.04,
+    cupRatioW2: 0.03,
+    cupRatioW3: 0.02,
+    cupRatioW4: 0.01,
+    selected: true,
+  },
+];
+
+// ===== 第二品系统数据 =====
+export const mockSystemDataProduct2 = {
+  storeCount: 7188,
+  firstWeekDailyCups: 580,
+  firstMonthDailyCups: 620,
+  totalSalesMay: 121169659,
+};
 
 // ===== 系统自动获取（非表格读取） =====
 export const mockSystemData = {
@@ -179,12 +248,12 @@ export const mockRegionCoefficients: RegionCoefficient[] = [
   { subsidiary: '山西子公司', rawValue: 1.036, coefficient: 1.036, isFloored: false, editable: true },
 ];
 
-// ===== 区域系数计算过程：每个历史品在每个子公司的达标率（实际/预测） =====
-// 展示用：选取5个代表性子公司 × 23个历史品的达标率
+// ===== 区域系数计算过程：每个历史品在每个子公司的实际销量占比比值（9/9修正） =====
+// 展示用：选取5个代表性子公司 × 23个历史品的实际销量占比比值（子公司新品占比/全国新品占比）
 export const regionCalcProcess = {
   // 展示5个代表性子公司（含兜底和非兜底）
   sampleSubs: ['湖北子公司', '广东子公司', '浙江子公司', '北京子公司', '辽宁子公司'],
-  // 23个历史品在这些子公司的达标率（实际销量/预测销量）
+  // 23个历史品在这些子公司的实际销量占比比值（子公司新品占比/全国新品占比，9/9修正）
   data: [
     { name: '归云南·云漫普洱',    hubei: 1.210, guangdong: 0.830, zhejiang: 1.090, beijing: 1.010, liaoning: 1.200 },
     { name: '归云南·云卷松风',    hubei: 1.180, guangdong: 0.810, zhejiang: 1.070, beijing: 0.980, liaoning: 1.170 },
@@ -292,6 +361,18 @@ export const mockUnifiedDistribution: UnifiedDistribution[] = [
   { storeId: '1101010006', storeName: '北京王府井喜悦店', warehouse: '北京二级仓', materials: [{ name: '安溪铁观音', qty: 5 }, { name: '莲雾苹果汁', qty: 35 }, { name: '冷冻生椰乳', qty: 12 }] },
 ];
 
+// ===== 仓级统配对比（9/9新增：统配异常按仓维度聚合展示） =====
+export const mockWarehouseDistributionCompare: WarehouseDistributionCompare[] = [
+  { warehouseName: '北京二级仓', forecastQty: 21280, actualQty: 19800, deviation: 1480, deviationPct: 7.5, isAbnormal: false },
+  { warehouseName: '广东一级仓', forecastQty: 45600, actualQty: 42100, deviation: 3500, deviationPct: 8.3, isAbnormal: false },
+  { warehouseName: '上海一级仓', forecastQty: 38200, actualQty: 35800, deviation: 2400, deviationPct: 6.7, isAbnormal: false },
+  { warehouseName: '湖北一级仓', forecastQty: 32100, actualQty: 28500, deviation: 3600, deviationPct: 12.6, isAbnormal: true },
+  { warehouseName: '四川一级仓', forecastQty: 29800, actualQty: 27200, deviation: 2600, deviationPct: 9.6, isAbnormal: false },
+  { warehouseName: '浙江一级仓', forecastQty: 27500, actualQty: 24100, deviation: 3400, deviationPct: 14.1, isAbnormal: true },
+  { warehouseName: '辽宁一级仓', forecastQty: 18900, actualQty: 17600, deviation: 1300, deviationPct: 7.4, isAbnormal: false },
+  { warehouseName: '天津一级仓', forecastQty: 22300, actualQty: 20800, deviation: 1500, deviationPct: 7.2, isAbnormal: false },
+];
+
 // ===== 全国物料汇总（与BOM 4种物料统一） =====
 export const nationalMaterialSummary = [
   { name: '安溪铁观音', forecastQty: 66285, allocationQty: 23365, extraStock: 42920, orderQty: 66285 },
@@ -310,3 +391,55 @@ export const warehouseSummarySample = {
     { name: '东方美人乌龙茶-A', allocationQty: 0, extraStock: 823, total: 823, orderQty: 825 },
   ],
 };
+
+// ===== 全部仓库汇总（8仓，9/20会议补充仓维度信息） =====
+export const allWarehouseSummary = [
+  { warehouseName: '北京二级仓', storeCount: 892, materials: [
+    { name: '安溪铁观音', allocationQty: 589, extraStock: 1539, total: 2128, orderQty: 2128, unit: '箱' },
+    { name: '莲雾苹果汁', allocationQty: 5154, extraStock: 8245, total: 13399, orderQty: 13404, unit: '箱' },
+    { name: '冷冻生椰乳', allocationQty: 2792, extraStock: 2035, total: 4827, orderQty: 4830, unit: '瓶' },
+    { name: '东方美人乌龙茶-A', allocationQty: 0, extraStock: 823, total: 823, orderQty: 825, unit: '箱' },
+  ]},
+  { warehouseName: '广东一级仓', storeCount: 1245, materials: [
+    { name: '安溪铁观音', allocationQty: 820, extraStock: 2140, total: 2960, orderQty: 2960, unit: '箱' },
+    { name: '莲雾苹果汁', allocationQty: 7180, extraStock: 11490, total: 18670, orderQty: 18675, unit: '箱' },
+    { name: '冷冻生椰乳', allocationQty: 3890, extraStock: 2835, total: 6725, orderQty: 6730, unit: '瓶' },
+    { name: '东方美人乌龙茶-A', allocationQty: 0, extraStock: 1148, total: 1148, orderQty: 1150, unit: '箱' },
+  ]},
+  { warehouseName: '上海一级仓', storeCount: 1034, materials: [
+    { name: '安溪铁观音', allocationQty: 680, extraStock: 1775, total: 2455, orderQty: 2455, unit: '箱' },
+    { name: '莲雾苹果汁', allocationQty: 5960, extraStock: 9535, total: 15495, orderQty: 15500, unit: '箱' },
+    { name: '冷冻生椰乳', allocationQty: 3230, extraStock: 2355, total: 5585, orderQty: 5590, unit: '瓶' },
+    { name: '东方美人乌龙茶-A', allocationQty: 0, extraStock: 953, total: 953, orderQty: 955, unit: '箱' },
+  ]},
+  { warehouseName: '湖北一级仓', storeCount: 978, materials: [
+    { name: '安溪铁观音', allocationQty: 645, extraStock: 1680, total: 2325, orderQty: 2325, unit: '箱' },
+    { name: '莲雾苹果汁', allocationQty: 5650, extraStock: 9040, total: 14690, orderQty: 14695, unit: '箱' },
+    { name: '冷冻生椰乳', allocationQty: 3060, extraStock: 2230, total: 5290, orderQty: 5295, unit: '瓶' },
+    { name: '东方美人乌龙茶-A', allocationQty: 0, extraStock: 903, total: 903, orderQty: 905, unit: '箱' },
+  ]},
+  { warehouseName: '四川一级仓', storeCount: 856, materials: [
+    { name: '安溪铁观音', allocationQty: 565, extraStock: 1470, total: 2035, orderQty: 2035, unit: '箱' },
+    { name: '莲雾苹果汁', allocationQty: 4950, extraStock: 7920, total: 12870, orderQty: 12875, unit: '箱' },
+    { name: '冷冻生椰乳', allocationQty: 2680, extraStock: 1955, total: 4635, orderQty: 4640, unit: '瓶' },
+    { name: '东方美人乌龙茶-A', allocationQty: 0, extraStock: 792, total: 792, orderQty: 795, unit: '箱' },
+  ]},
+  { warehouseName: '浙江一级仓', storeCount: 812, materials: [
+    { name: '安溪铁观音', allocationQty: 535, extraStock: 1395, total: 1930, orderQty: 1930, unit: '箱' },
+    { name: '莲雾苹果汁', allocationQty: 4690, extraStock: 7505, total: 12195, orderQty: 12200, unit: '箱' },
+    { name: '冷冻生椰乳', allocationQty: 2540, extraStock: 1850, total: 4390, orderQty: 4395, unit: '瓶' },
+    { name: '东方美人乌龙茶-A', allocationQty: 0, extraStock: 750, total: 750, orderQty: 752, unit: '箱' },
+  ]},
+  { warehouseName: '辽宁一级仓', storeCount: 623, materials: [
+    { name: '安溪铁观音', allocationQty: 410, extraStock: 1070, total: 1480, orderQty: 1480, unit: '箱' },
+    { name: '莲雾苹果汁', allocationQty: 3600, extraStock: 5760, total: 9360, orderQty: 9365, unit: '箱' },
+    { name: '冷冻生椰乳', allocationQty: 1950, extraStock: 1420, total: 3370, orderQty: 3375, unit: '瓶' },
+    { name: '东方美人乌龙茶-A', allocationQty: 0, extraStock: 576, total: 576, orderQty: 578, unit: '箱' },
+  ]},
+  { warehouseName: '天津一级仓', storeCount: 748, materials: [
+    { name: '安溪铁观音', allocationQty: 492, extraStock: 1285, total: 1777, orderQty: 1777, unit: '箱' },
+    { name: '莲雾苹果汁', allocationQty: 4320, extraStock: 6910, total: 11230, orderQty: 11235, unit: '箱' },
+    { name: '冷冻生椰乳', allocationQty: 2345, extraStock: 1710, total: 4055, orderQty: 4060, unit: '瓶' },
+    { name: '东方美人乌龙茶-A', allocationQty: 0, extraStock: 691, total: 691, orderQty: 693, unit: '箱' },
+  ]},
+];
