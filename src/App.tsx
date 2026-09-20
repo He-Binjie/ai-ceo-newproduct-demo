@@ -1040,6 +1040,109 @@ W4 = 1150.49 × 1.2 × 0.012544 × 7 ÷ 11.41 × 1.0 = 10.62
   );
 }
 
+// ===== 汇总到仓扁平表组件（仓+物料一起展示，支持筛选+分页） =====
+function WarehouseFlatTable() {
+  const [whFilter, setWhFilter] = useState('all');
+  const [whPage, setWhPage] = useState(0);
+  const whPageSize = 20;
+
+  // 展开为扁平行
+  const flatRows = useMemo(() => {
+    const rows: Array<{ warehouse: string; storeCount: number; material: string; materialCode: string; allocationQty: number; extraStock: number; total: number; orderQty: number; unit: string }> = [];
+    allWarehouseSummary.forEach(wh => {
+      wh.materials.forEach((m, mi) => {
+        rows.push({
+          warehouse: wh.warehouseName,
+          storeCount: wh.storeCount,
+          material: m.name,
+          materialCode: ['20260901-001','20260902-002','20260903-003','0260815-004'][mi] || '',
+          allocationQty: m.allocationQty,
+          extraStock: m.extraStock,
+          total: m.total,
+          orderQty: m.orderQty,
+          unit: m.unit,
+        });
+      });
+    });
+    return rows;
+  }, []);
+
+  const filteredRows = whFilter === 'all' ? flatRows : flatRows.filter(r => r.warehouse === whFilter);
+  const totalPages = Math.ceil(filteredRows.length / whPageSize);
+  const pagedRows = filteredRows.slice(whPage * whPageSize, (whPage + 1) * whPageSize);
+
+  // 合并单元格：同一仓库的仓库名和门店数
+  let prevWh = '';
+
+  return (
+    <div className="card">
+      <div className="card-title">🏭 汇总到仓（{allWarehouseSummary.length}仓 × 物料）<button className="export-btn">📥 导出</button></div>
+      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>仓店映射来源：dw_store_warehouse_map（WEEK + LEVEL_ONE/LEVEL_TWO，一店一仓）</p>
+      
+      {/* 筛选栏 */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>仓库筛选：</span>
+        <select value={whFilter} onChange={e => { setWhFilter(e.target.value); setWhPage(0); }} style={{ fontSize: 12, padding: '4px 8px', borderRadius: 4, border: '1px solid var(--border)', background: 'white', minWidth: 140 }}>
+          <option value="all">全部仓库（{allWarehouseSummary.length}仓）</option>
+          {allWarehouseSummary.map((wh, i) => (
+            <option key={i} value={wh.warehouseName}>{wh.warehouseName}（{wh.storeCount}店）</option>
+          ))}
+        </select>
+        <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto' }}>共 {filteredRows.length} 行</span>
+      </div>
+
+      {/* 扁平表 */}
+      <div style={{ maxHeight: 480, overflowY: 'auto' }}>
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th style={{ minWidth: 100, position: 'sticky', top: 0, background: 'var(--bg, white)', zIndex: 2 }}>仓库</th>
+              <th className="num" style={{ position: 'sticky', top: 0, background: 'var(--bg, white)', zIndex: 2 }}>覆盖门店</th>
+              <th style={{ minWidth: 120, position: 'sticky', top: 0, background: 'var(--bg, white)', zIndex: 2 }}>物料</th>
+              <th style={{ position: 'sticky', top: 0, background: 'var(--bg, white)', zIndex: 2 }}>物料编码</th>
+              <th className="num" style={{ position: 'sticky', top: 0, background: 'var(--bg, white)', zIndex: 2 }}>统配量</th>
+              <th className="num" style={{ position: 'sticky', top: 0, background: 'var(--bg, white)', zIndex: 2 }}>统配外</th>
+              <th className="num" style={{ position: 'sticky', top: 0, background: 'var(--bg, white)', zIndex: 2 }}>合计</th>
+              <th className="num" style={{ position: 'sticky', top: 0, background: 'var(--bg, white)', zIndex: 2 }}>下单量</th>
+              <th style={{ position: 'sticky', top: 0, background: 'var(--bg, white)', zIndex: 2 }}>单位</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pagedRows.map((r, i) => {
+              const showWh = r.warehouse !== prevWh;
+              prevWh = r.warehouse;
+              return (
+                <tr key={i} style={{ background: showWh && i > 0 ? 'rgba(79,168,224,0.04)' : undefined }}>
+                  <td style={{ fontWeight: showWh ? 600 : 400, color: showWh ? 'var(--accent)' : 'var(--text-muted)', fontSize: showWh ? 12 : 11 }}>{showWh ? r.warehouse : ''}</td>
+                  <td className="num" style={{ color: 'var(--text-muted)', fontSize: 11 }}>{showWh ? r.storeCount : ''}</td>
+                  <td style={{ fontWeight: 600 }}>{r.material}</td>
+                  <td style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{r.materialCode}</td>
+                  <td className="num">{r.allocationQty.toLocaleString()}</td>
+                  <td className="num" style={{ fontWeight: 700 }}>{r.extraStock.toLocaleString()}</td>
+                  <td className="num">{r.total.toLocaleString()}</td>
+                  <td className="num" style={{ fontWeight: 700, color: 'var(--accent)' }}>{r.orderQty.toLocaleString()}</td>
+                  <td style={{ fontSize: 11 }}>{r.unit}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* 分页 */}
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 10, fontSize: 12 }}>
+          <button onClick={() => setWhPage(0)} disabled={whPage === 0} style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid var(--border)', background: 'white', cursor: whPage === 0 ? 'default' : 'pointer', opacity: whPage === 0 ? 0.4 : 1 }}>首页</button>
+          <button onClick={() => setWhPage(p => Math.max(0, p - 1))} disabled={whPage === 0} style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid var(--border)', background: 'white', cursor: whPage === 0 ? 'default' : 'pointer', opacity: whPage === 0 ? 0.4 : 1 }}>上一页</button>
+          <span style={{ color: 'var(--text-muted)' }}>{whPage + 1} / {totalPages}</span>
+          <button onClick={() => setWhPage(p => Math.min(totalPages - 1, p + 1))} disabled={whPage >= totalPages - 1} style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid var(--border)', background: 'white', cursor: whPage >= totalPages - 1 ? 'default' : 'pointer', opacity: whPage >= totalPages - 1 ? 0.4 : 1 }}>下一页</button>
+          <button onClick={() => setWhPage(totalPages - 1)} disabled={whPage >= totalPages - 1} style={{ padding: '3px 8px', borderRadius: 4, border: '1px solid var(--border)', background: 'white', cursor: whPage >= totalPages - 1 ? 'default' : 'pointer', opacity: whPage >= totalPages - 1 ? 0.4 : 1 }}>末页</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone }: { tongpeiDone: boolean; supplierDone: boolean }) {
   // 异常统配门店明细（12家）
   const abnormalStores = [
@@ -1072,42 +1175,8 @@ function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone }: { tongpei
     <div className="animate-in">
       <div className="panel-title"><span className="step-badge">Step 3</span>汇总到仓 + 供应商 + 预警</div>
 
-      {/* 汇总到仓 — 全部8仓 */}
-      <div className="card">
-        <div className="card-title">🏭 汇总到仓（8仓汇总）<button className="export-btn">📥 导出</button></div>
-        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>仓店映射来源：dw_store_warehouse_map（WEEK + LEVEL_ONE/LEVEL_TWO，一店一仓）</p>
-        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-          {allWarehouseSummary.map((wh, wi) => (
-            <span key={wi} style={{ fontSize: 11, padding: '3px 8px', borderRadius: 4, background: wi === 0 ? 'var(--accent-light)' : 'var(--bg-subtle, #f8fafc)', color: wi === 0 ? 'var(--accent)' : 'var(--text-muted)', border: '1px solid var(--border)', fontWeight: wi === 0 ? 600 : 400 }}>
-              {wh.warehouseName}（{wh.storeCount}店）
-            </span>
-          ))}
-        </div>
-        {allWarehouseSummary.map((wh, wi) => (
-          <div key={wi} style={{ marginBottom: wi < allWarehouseSummary.length - 1 ? 16 : 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ background: 'var(--accent)', color: 'white', borderRadius: 4, padding: '1px 6px', fontSize: 10 }}>{wh.warehouseName}</span>
-              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>覆盖 {wh.storeCount} 家门店</span>
-            </div>
-            <table className="data-table">
-              <thead><tr><th>物料</th><th>物料编码</th><th className="num">统配量</th><th className="num">统配外备货量</th><th className="num">合计</th><th className="num">下单量</th><th>单位</th></tr></thead>
-              <tbody>
-                {wh.materials.map((m, mi) => (
-                  <tr key={mi}>
-                    <td style={{ fontWeight: 600 }}>{m.name}</td>
-                    <td style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{['20260901-001','20260902-002','20260903-003','0260815-004'][mi]}</td>
-                    <td className="num">{m.allocationQty.toLocaleString()}</td>
-                    <td className="num" style={{ fontWeight: 700 }}>{m.extraStock.toLocaleString()}</td>
-                    <td className="num">{m.total.toLocaleString()}</td>
-                    <td className="num" style={{ fontWeight: 700, color: 'var(--accent)' }}>{m.orderQty.toLocaleString()}</td>
-                    <td style={{ fontSize: 11 }}>{m.unit}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ))}
-      </div>
+      {/* 汇总到仓 — 扁平表（仓+物料一起展示） */}
+      <WarehouseFlatTable />
 
       {/* 供应商 */}
       {supplierDone ? (
