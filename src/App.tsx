@@ -263,7 +263,7 @@ function App() {
       setTimeout(() => {
         setIsTyping(false);
         simulateTyping(
-          `📦 **供应商数据已确认** ✅\n\n已完成份额分配与MOQ取整：\n• 安溪铁观音：福建安溪茶业A(60%) + 云南普洱供应链B(40%)\n• 莲雾苹果汁：海南果汁工厂C(100%)\n• 冷冻生椰乳：椰树供应链D(70%) + 海南椰品E(30%)\n• 东方美人乌龙茶-A：台湾茶业F(100%)\n\n详见右侧供应商分配表。\n\n⏰ **统配数据（T-30出数）**\n统配数据是否已到？如果已到，我将继续进行统配比对和统配外计算。`,
+          `📦 **供应商数据已确认** ✅\n\n已完成份额分配与MOQ取整：\n• 安溪铁观音：福建安溪茶业A(60%) + 云南普洱供应链B(40%)\n• 莲雾苹果汁：海南果汁工厂C(100%)\n• 冷冻生椰乳：椰树供应链D(70%) + 海南椰品E(30%)\n• 东方美人乌龙茶-A：台湾茶业F(100%)\n\n详见右侧「供应商分配表」与「AI推荐供应商→仓分配方案」。\n\n⏰ **统配数据（T-30出数）**\n统配数据是否已到？如果已到，我将继续进行统配比对和统配外计算。`,
           ['读取供应商主数据', '按份额分配采购量', 'MOQ取整校验'],
           [{ label: '✅ 统配数据已到，继续', type: 'confirm' }, { label: '⏸️ 统配数据未到，暂停', type: 'skip' }],
         );
@@ -518,7 +518,7 @@ function App() {
                               setSupplierDone(true);
                               setRightTab(3);
                               simulateTyping(
-                                `📦 **供应商数据已确认** ✅\n\n已完成份额分配与MOQ取整：\n• 安溪铁观音：福建安溪茶业A(60%) + 云南普洱供应链B(40%)\n• 莲雾苹果汁：海南果汁工厂C(100%)\n• 冷冻生椰乳：椰树供应链D(70%) + 海南椰品E(30%)\n• 东方美人乌龙茶-A：台湾茶业F(100%)\n\n详见右侧供应商分配表。\n\n⏰ **统配数据（T-30出数）**\n统配数据是否已到？如果已到，我将继续进行统配比对和统配外计算。`,
+                                `📦 **供应商数据已确认** ✅\n\n已完成份额分配与MOQ取整：\n• 安溪铁观音：福建安溪茶业A(60%) + 云南普洱供应链B(40%)\n• 莲雾苹果汁：海南果汁工厂C(100%)\n• 冷冻生椰乳：椰树供应链D(70%) + 海南椰品E(30%)\n• 东方美人乌龙茶-A：台湾茶业F(100%)\n\n详见右侧「供应商分配表」与「AI推荐供应商→仓分配方案」。\n\n⏰ **统配数据（T-30出数）**\n统配数据是否已到？如果已到，我将继续进行统配比对和统配外计算。`,
                                 ['读取供应商主数据', '按份额分配采购量', 'MOQ取整校验'],
                                 [{ label: '✅ 统配数据已到，继续', type: 'confirm' }, { label: '⏸️ 统配数据未到，暂停', type: 'skip' }],
                               );
@@ -1171,6 +1171,14 @@ function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone }: { tongpei
   const statusIcon = (s: string) => s === 'pass' ? <span className="warn-pass">✅</span> : s === 'fail' ? <span className="warn-fail">❌</span> : <span className="warn-warn">⚠️</span>;
   const statusVal = (val: string | number, s: string) => <span className={s === 'pass' ? 'warn-pass' : s === 'fail' ? 'warn-fail' : 'warn-warn'}>{val}</span>;
 
+  // 供应商确认后自动定位到供应商分配表（避免"表未展示"的误判）
+  useEffect(() => {
+    if (supplierDone) {
+      const el = document.getElementById('supplier-alloc-card');
+      if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'start' }), 350);
+    }
+  }, [supplierDone]);
+
   return (
     <div className="animate-in">
       <div className="panel-title"><span className="step-badge">Step 3</span>汇总到仓 + 供应商 + 预警</div>
@@ -1180,19 +1188,26 @@ function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone }: { tongpei
 
       {/* 供应商 */}
       {supplierDone ? (
-        <div className="card">
-          <div className="card-title">📦 供应商分配<button className="export-btn">📥 导出</button></div>
+        <div className="card" id="supplier-alloc-card" style={{ borderColor: 'var(--accent)' }}>
+          <div className="card-title" style={{ color: 'var(--accent)' }}>📦 供应商分配表（份额 + MOQ 取整）<button className="export-btn">📥 导出</button></div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.6 }}>
+            份额由飞书多维表格维护（合计须＝100%）；MOQ 向上取整：各仓下单量 = ceil(仓需求量 ÷ MOQ) × MOQ；无 MOQ 时默认 = 1，不取整
+          </div>
           <table className="data-table">
-            <thead><tr><th>物料</th><th>供应商</th><th>供应商编码</th><th className="num">份额%</th><th className="num">MOQ</th><th className="num">产能/周</th></tr></thead>
+            <thead><tr><th>物料</th><th>供应商</th><th>供应商编码</th><th className="num">份额%</th><th className="num">MOQ</th><th className="num">产能/周</th><th className="num">需求分配量</th><th className="num">MOQ取整后</th></tr></thead>
             <tbody>
-              <tr><td style={{ fontWeight: 600 }}>安溪铁观音</td><td>福建安溪茶业A</td><td style={{ fontSize: 11 }}>SUP-001</td><td className="num">60%</td><td className="num">500</td><td className="num">50,000</td></tr>
-              <tr><td style={{ fontWeight: 600 }}>安溪铁观音</td><td>云南普洱供应链B</td><td style={{ fontSize: 11 }}>SUP-002</td><td className="num">40%</td><td className="num">300</td><td className="num">30,000</td></tr>
-              <tr><td style={{ fontWeight: 600 }}>莲雾苹果汁</td><td>海南果汁工厂C</td><td style={{ fontSize: 11 }}>SUP-003</td><td className="num">100%</td><td className="num">200</td><td className="num">400,000</td></tr>
-              <tr><td style={{ fontWeight: 600 }}>冷冻生椰乳</td><td>椰树供应链D</td><td style={{ fontSize: 11 }}>SUP-004</td><td className="num">70%</td><td className="num">100</td><td className="num">120,000</td></tr>
-              <tr><td style={{ fontWeight: 600 }}>冷冻生椰乳</td><td>海南椰品E</td><td style={{ fontSize: 11 }}>SUP-005</td><td className="num">30%</td><td className="num">100</td><td className="num">60,000</td></tr>
-              <tr><td style={{ fontWeight: 600 }}>东方美人乌龙茶-A</td><td>台湾茶业F</td><td style={{ fontSize: 11 }}>SUP-006</td><td className="num">100%</td><td className="num">200</td><td className="num">35,000</td></tr>
+              <tr><td style={{ fontWeight: 600 }}>安溪铁观音</td><td>福建安溪茶业A</td><td style={{ fontSize: 11 }}>SUP-001</td><td className="num">60%</td><td className="num">500</td><td className="num">50,000</td><td className="num">39,771</td><td className="num">40,000</td></tr>
+              <tr><td style={{ fontWeight: 600 }}>安溪铁观音</td><td>云南普洱供应链B</td><td style={{ fontSize: 11 }}>SUP-002</td><td className="num">40%</td><td className="num">300</td><td className="num">30,000</td><td className="num">26,514</td><td className="num">26,700</td></tr>
+              <tr><td style={{ fontWeight: 600 }}>莲雾苹果汁</td><td>海南果汁工厂C</td><td style={{ fontSize: 11 }}>SUP-003</td><td className="num">100%</td><td className="num">200</td><td className="num">400,000</td><td className="num">363,540</td><td className="num">363,600</td></tr>
+              <tr><td style={{ fontWeight: 600 }}>冷冻生椰乳</td><td>椰树供应链D</td><td style={{ fontSize: 11 }}>SUP-004</td><td className="num">70%</td><td className="num">100</td><td className="num">120,000</td><td className="num">96,842</td><td className="num">96,900</td></tr>
+              <tr><td style={{ fontWeight: 600 }}>冷冻生椰乳</td><td>海南椰品E</td><td style={{ fontSize: 11 }}>SUP-005</td><td className="num">30%</td><td className="num">100</td><td className="num">60,000</td><td className="num">41,503</td><td className="num">41,600</td></tr>
+              <tr><td style={{ fontWeight: 600 }}>东方美人乌龙茶-A</td><td>台湾茶业F</td><td style={{ fontSize: 11 }}>SUP-006</td><td className="num">100%</td><td className="num">200</td><td className="num">35,000</td><td className="num">28,655</td><td className="num">28,800</td></tr>
             </tbody>
           </table>
+          <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.9 }}>
+            <div>约束校验：份额合计 = 100% ✅ ｜ MOQ 向上取整 ✅ ｜ 供应商周产能覆盖需求 ✅</div>
+            <div style={{ color: 'var(--text-muted)' }}>数据来源：飞书多维表格（供应商信息）→ 湖仓 → 本体；新供应商需人工填写飞书表。份额归属（飞书底表 or 页面内改）待与罗雄确认。</div>
+          </div>
         </div>
       ) : (
         <div className="card" style={{ borderColor: 'var(--warn)', background: 'rgba(245,158,11,0.04)' }}>
@@ -1203,7 +1218,41 @@ function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone }: { tongpei
         </div>
       )}
 
-      {/* 偏差率检测 — 按物料维度（计算过程监控，非预警） */}
+      {/* 🤖 AI推荐供应商 → 仓分配方案（V7.5 新增：PRD §4.10 六维度） */}
+      {supplierDone && (
+        <div className="card" style={{ borderColor: 'var(--accent)', background: 'var(--accent-bg)' }}>
+          <div className="card-title" style={{ color: 'var(--accent)' }}>🤖 AI推荐供应商 → 仓分配方案<button className="export-btn">📥 导出</button></div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.6 }}>
+            <b>6 维度综合评估</b>：① 份额占比 ② MOQ 规则 ③ 同组仓归属（同一一级仓下的二级仓尽量给同一供应商）④ 距离远近（供应商发货地 → 仓的物流距离）⑤ 仓配优先 ⑥ 一组仓尽量一个供应商。<br/>
+            30+ 仓 × 多供应商时人工分配效率低、容易漏约束，AI 一次性给出全局最优方案，用户只需<b>审核确认</b>或<b>手动调整某些仓</b>后系统重算。
+          </div>
+          <table className="data-table">
+            <thead>
+              <tr><th>仓</th><th>物料</th><th>AI 推荐供应商</th><th className="num">分配量</th><th>推荐理由（命中的维度）</th></tr>
+            </thead>
+            <tbody>
+%s
+            </tbody>
+          </table>
+          <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.9 }}>
+            <div><b>约束校验</b>：份额合计 = 100% ✅ ｜ MOQ 向上取整 ✅ ｜ 同组仓同一供应商 ✅ ｜ 供应商周产能覆盖 ✅</div>
+            <div><b>人工可介入</b>：确认方案直接进入下一步；或输入「调整 湖北一级仓 供应商 椰树供应链D」→ 系统重算并重新校验约束</div>
+            <div style={{ color: 'var(--text-muted)' }}>输入依据：各仓需求量、各供应商份额/MOQ/发货地、仓店映射关系、仓组归属关系</div>
+          </div>
+        </div>
+      )}
+
+              <tr><td style={{ fontWeight: 600 }}>福建一级仓</td><td>安溪铁观音</td><td style={{ color: 'var(--accent)', fontWeight: 600 }}>福建安溪茶业A</td><td className="num">12,400</td><td style={{ fontSize: 11 }}>③同组仓归属 ④发货地同省（距离最近）①份额优先</td></tr>
+              <tr><td style={{ fontWeight: 600 }}>广东一级仓</td><td>安溪铁观音</td><td style={{ color: 'var(--accent)', fontWeight: 600 }}>福建安溪茶业A</td><td className="num">9,800</td><td style={{ fontSize: 11 }}>④运输半径最短 ⑤仓配优先</td></tr>
+              <tr><td style={{ fontWeight: 600 }}>浙江一级仓</td><td>安溪铁观音</td><td style={{ color: 'var(--accent)', fontWeight: 600 }}>福建安溪茶业A</td><td className="num">8,600</td><td style={{ fontSize: 11 }}>④距离次优 ①份额优先</td></tr>
+              <tr><td style={{ fontWeight: 600 }}>上海一级仓</td><td>安溪铁观音</td><td style={{ color: 'var(--accent)', fontWeight: 600 }}>福建安溪茶业A</td><td className="num">8,971</td><td style={{ fontSize: 11 }}>①份额优先 ③同组仓归属</td></tr>
+              <tr><td style={{ fontWeight: 600 }}>云南一级仓</td><td>安溪铁观音</td><td style={{ color: 'var(--accent)', fontWeight: 600 }}>云南普洱供应链B</td><td className="num">14,900</td><td style={{ fontSize: 11 }}>④发货地同省 ⑥一组仓同一供应商</td></tr>
+              <tr><td style={{ fontWeight: 600 }}>四川一级仓</td><td>安溪铁观音</td><td style={{ color: 'var(--accent)', fontWeight: 600 }}>云南普洱供应链B</td><td className="num">11,614</td><td style={{ fontSize: 11 }}>④距离次优 ⑤仓配优先</td></tr>
+              <tr><td style={{ fontWeight: 600 }}>海南二级仓</td><td>冷冻生椰乳</td><td style={{ color: 'var(--accent)', fontWeight: 600 }}>椰树供应链D</td><td className="num">18,400</td><td style={{ fontSize: 11 }}>④发货地同省 ③二级仓随一级仓</td></tr>
+              <tr><td style={{ fontWeight: 600 }}>广东一级仓</td><td>冷冻生椰乳</td><td style={{ color: 'var(--accent)', fontWeight: 600 }}>椰树供应链D</td><td className="num">22,300</td><td style={{ fontSize: 11 }}>④距离最短 ①份额优先</td></tr>
+              <tr><td style={{ fontWeight: 600 }}>湖北一级仓</td><td>冷冻生椰乳</td><td style={{ color: 'var(--accent)', fontWeight: 600 }}>海南椰品E</td><td className="num">16,800</td><td style={{ fontSize: 11 }}>③同组仓剥离（避免单供应商超产能）</td></tr>
+              <tr><td style={{ fontWeight: 600 }}>辽宁一级仓</td><td>冷冻生椰乳</td><td style={{ color: 'var(--accent)', fontWeight: 600 }}>海南椰品E</td><td className="num">9,700</td><td style={{ fontSize: 11 }}>④北方仓就近 ②MOQ 规则匹配</td></tr>
+              <tr><td style={{ fontWeight: 600 }}>全部 21 仓</td><td>莲雾苹果汁 / 东方美人乌龙茶-A</td><td style={{ color: 'var(--accent)', fontWeight: 600 }}>海南果汁工厂C / 台湾茶业F</td><td className="num">363,540 / 28,655</td><td style={{ fontSize: 11 }}>⑥单一供应商（100% 份额，无拆分）</td></tr>      {/* 偏差率检测 — 按物料维度（计算过程监控，非预警） */}
       <div className="card" style={{ borderColor: 'var(--good)', background: 'rgba(34,197,94,0.04)' }}>
         <div className="card-title" style={{ color: 'var(--good)' }}>📊 偏差率检测 · 三道检测（计算过程监控）<button className="export-btn">📥 导出</button></div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.6 }}>
