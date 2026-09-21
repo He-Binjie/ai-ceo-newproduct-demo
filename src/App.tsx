@@ -59,7 +59,7 @@ function parseParameterAdjustment(text: string): { response: string; thinking: s
     const [, days] = safetyMatch;
     return {
       response: `✅ 已调整安全库存天数\n\n• 安全库存：5天 → **${days}天**\n\n**已重新计算** ✅ 右侧面板已跳转到 Step 3，请确认重算结果。`,
-      thinking: [`修改安全库存天数：5天 → ${days}天`, `自动定位到 Step 3 预警检查`, `已重新校验所有仓库安全库存`],
+      thinking: [`修改安全库存天数：5天 → ${days}天`, `自动定位到 Step 3 偏差率检测`, `已重新校验所有仓库安全库存`],
       targetStep: 3,
     };
   }
@@ -204,8 +204,8 @@ function App() {
         break;
       case 3:
         simulateTyping(
-          `汇总到仓 + 预警检查完成 ✅\n\n🏭 **汇总到仓**（仓店映射9,708条）\n• 北京二级仓：莲雾苹果汁 **13,399** 瓶\n• 详见右侧各仓库汇总\n\n📊 **预警检查（物料维度）**\n• 安溪铁观音：备货偏差 5.2%（分仓计算值 vs 理论需求量） ✅ ｜ MOQ 0.03% ✅ ｜ 安库 20.3天 ✅\n• 莲雾苹果汁：备货偏差 8.6%（分仓计算值 vs 理论需求量） ✅ ｜ MOQ 0.055% ✅ ｜ 安库 17.2天 ✅\n• 冷冻生椰乳：备货偏差 **12.1%**（分仓计算值 vs 理论需求量） ❌ 超阈值 ｜ MOQ 0.18% ✅ ｜ 安库 11.8天 ✅\n• 东方美人乌龙茶-A：备货偏差 3.8%（分仓计算值 vs 理论需求量） ✅ ｜ MOQ 0.24% ✅ ｜ 安库 20.0天 ✅\n\n📦 **仓级统配对比**\n• 湖北一级仓：偏差 12.6% ⚠️ 异常\n• 浙江一级仓：偏差 14.1% ⚠️ 异常\n• 其余6仓均在10%以内 ✅\n\n📦 **供应商数据**\n供应商分配数据是否已确认？确认后我将进行份额分配与MOQ取整。\n\n💡 **如需调整参数，可直接输入：**\n• "调整区域系数 湖北 1.1"\n• "调整备货系数 莲雾苹果汁 1.2"\n• "调整W1占比 0.06"\n• "安全库存改成7天"\n• 输入"帮助"查看完整参数清单`,
-          ['读取仓店映射Sheet2：9,708条', '按仓库汇总门店物料量', '备货偏差/ MOQ取整/安全库存三道预警（物料维度）'],
+          `汇总到仓 + 偏差率检测完成 ✅\n\n🏭 **汇总到仓**（仓店映射9,708条）\n• 北京二级仓：莲雾苹果汁 **13,399** 瓶\n• 详见右侧各仓库汇总\n\n📊 **偏差率检测（计算过程监控，非预警）**\n• 安溪铁观音：备货偏差 5.2%（分仓计算值 vs 理论需求量） ✅ ｜ MOQ 0.03% ✅ ｜ 安库 20.3天 ✅\n• 莲雾苹果汁：备货偏差 8.6%（分仓计算值 vs 理论需求量） ✅ ｜ MOQ 0.055% ✅ ｜ 安库 17.2天 ✅\n• 冷冻生椰乳：备货偏差 **12.1%**（分仓计算值 vs 理论需求量） ❌ 超阈值 ｜ MOQ 0.18% ✅ ｜ 安库 11.8天 ✅\n• 东方美人乌龙茶-A：备货偏差 3.8%（分仓计算值 vs 理论需求量） ✅ ｜ MOQ 0.24% ✅ ｜ 安库 20.0天 ✅\n\n📦 **仓级统配对比**\n• 湖北一级仓：偏差 12.6% ⚠️ 异常\n• 浙江一级仓：偏差 14.1% ⚠️ 异常\n• 其余6仓均在10%以内 ✅\n\n📦 **供应商数据**\n供应商分配数据是否已确认？确认后我将进行份额分配与MOQ取整。\n\n💡 **如需调整参数，可直接输入：**\n• "调整区域系数 湖北 1.1"\n• "调整备货系数 莲雾苹果汁 1.2"\n• "调整W1占比 0.06"\n• "安全库存改成7天"\n• 输入"帮助"查看完整参数清单`,
+          ['读取仓店映射Sheet2：9,708条', '按仓库汇总门店物料量', '备货偏差/ MOQ取整/安全库存三道检测（物料维度，计算过程监控）'],
           [{ label: '✅ 供应商数据已确认', type: 'supplier_confirm' }, { label: '⏸️ 供应商数据未到，暂停', type: 'supplier_skip' }, { label: '🔄 调参重跑', type: 'recalculate' }],
         );
         break;
@@ -485,7 +485,7 @@ function App() {
                             else if (action.type === 'notify') addBotMessage('📤 已发送飞书通知 ✅');
                             else if (action.type === 'skip') {
                               if (step === 3 && !tongpeiDone) {
-                                addBotMessage('⏸️ **统配数据未到，流程暂停**\n\n当前已完成：\n• ✅ 汇总到仓\n• ✅ 供应商分配\n• ✅ 三道预警检查\n\n等待统配数据到达后，输入"统配数据已到"或点击按钮继续。');
+                                addBotMessage('⏸️ **统配数据未到，流程暂停**\n\n当前已完成：\n• ✅ 汇总到仓\n• ✅ 供应商分配\n• ✅ 三道检测（计算过程监控）\n\n等待统配数据到达后，输入"统配数据已到"或点击按钮继续。');
                               } else if (selectedHistoricalProducts.size < historicalProductsDetail.length) {
                                 setSelectedHistoricalProducts(new Set(historicalProductsDetail.map(p => p.name)));
                                 simulateTyping(
@@ -524,7 +524,7 @@ function App() {
                               );
                             }
                             else if (action.type === 'supplier_skip') {
-                              addBotMessage('⏸️ **供应商数据未到，流程暂停**\n\n当前已完成：\n• ✅ 汇总到仓\n• ✅ 三道预警检查（物料维度）\n\n等待供应商数据确认后，输入"供应商数据已确认"或点击按钮继续。\n\n⏰ 统配数据也请同步关注。');
+                              addBotMessage('⏸️ **供应商数据未到，流程暂停**\n\n当前已完成：\n• ✅ 汇总到仓\n• ✅ 三道检测（物料维度，计算过程监控）\n\n等待供应商数据确认后，输入"供应商数据已确认"或点击按钮继续。\n\n⏰ 统配数据也请同步关注。');
                             }
                           }}
                           disabled={isTyping}
@@ -1203,11 +1203,12 @@ function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone }: { tongpei
         </div>
       )}
 
-      {/* 预警 — 按物料维度 */}
+      {/* 偏差率检测 — 按物料维度（计算过程监控，非预警） */}
       <div className="card" style={{ borderColor: 'var(--good)', background: 'rgba(34,197,94,0.04)' }}>
-        <div className="card-title" style={{ color: 'var(--good)' }}>📊 三道预警检查（物料维度）<button className="export-btn">📥 导出</button></div>
+        <div className="card-title" style={{ color: 'var(--good)' }}>📊 偏差率检测 · 三道检测（计算过程监控）<button className="export-btn">📥 导出</button></div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.6 }}>
-          备货偏差阈值：10%（分仓计算值 vs 理论需求量，不带系数） ｜ MOQ取整偏差阈值：5% ｜ 安全库存阈值：≥5天
+          备货偏差阈值：10%（分仓计算值 vs 理论需求量，不带系数） ｜ MOQ取整偏差阈值：5% ｜ 安全库存阈值：≥5天<br/>
+          此页是<b>计算过程的数值检测</b>（在流程内展示，<b>不推送首页</b>）；<b>超阈值不影响进入下一步</b>，系统仅给出数值提醒。上新后 T+1~T+28 的监控指标才走预警中心 / 首页消息。
         </div>
         <table className="data-table warning-table">
           <thead>
@@ -1239,8 +1240,47 @@ function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone }: { tongpei
             ))}
           </tbody>
         </table>
-        <div style={{ marginTop: 8, fontSize: 12, display: 'flex', gap: 16 }}>
-          <span style={{ color: 'var(--warn)' }}>⚠️ 冷冻生椰乳备货偏差 12.1%（分仓计算值 vs 理论需求量）超阈值，建议关注</span>
+        <div style={{ marginTop: 8, fontSize: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span style={{ color: 'var(--warn)' }}>⚠️ 冷冻生椰乳备货偏差 12.1%（分仓计算值 vs 理论需求量）超阈值 —— <b>可继续下一步</b>，系统仅做数值提醒（详见下方偏差来源拆解）</span>
+          <span style={{ color: 'var(--text-muted)' }}>✅ 其余 3 个物料均在阈值内 ｜ 本页检测结果不推送，仅在上新监控阶段触发预警时才走预警中心 / 首页消息</span>
+        </div>
+      </div>
+
+      {/* 偏差来源拆解 + 调参建议（V7.5 新增） */}
+      <div className="card" style={{ borderColor: 'var(--warn)', background: 'rgba(245,158,11,0.04)' }}>
+        <div className="card-title" style={{ color: 'var(--warn)' }}>🔍 偏差来源拆解 + 调参建议（冷冻生椰乳 +12.1%）</div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.6 }}>
+          理论需求量（纯预测杯量 × 用量，不带任何系数）<b>123,180</b> 瓶 ｜ 当前分仓计算值 <b>138,095</b> 瓶 ｜ 总偏差 <b>+14,915</b> 瓶（+12.1%）
+        </div>
+        <table className="data-table">
+          <thead>
+            <tr><th>偏差来源</th><th className="num">贡献量</th><th className="num">占总偏差</th><th>说明</th></tr>
+          </thead>
+          <tbody>
+            <tr style={{ background: 'rgba(245,158,11,0.08)' }}>
+              <td style={{ fontWeight: 700 }}>① 系数贡献 🔴 主因</td>
+              <td className="num" style={{ fontWeight: 700 }}>+9,860</td>
+              <td className="num" style={{ fontWeight: 700 }}>66.1%</td>
+              <td>区域系数加权 1.08 × 备货系数 1.4 放大</td>
+            </tr>
+            <tr>
+              <td style={{ fontWeight: 600 }}>② 效期下限贡献</td>
+              <td className="num">+3,020</td>
+              <td className="num">20.3%</td>
+              <td>部分门店周物料量被开封效期最小量顶起</td>
+            </tr>
+            <tr>
+              <td style={{ fontWeight: 600 }}>③ MOQ 取整贡献</td>
+              <td className="num">+2,035</td>
+              <td className="num">13.6%</td>
+              <td>各仓 MOQ 向上取整放大</td>
+            </tr>
+          </tbody>
+        </table>
+        <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.9 }}>
+          <div><b>主因判断</b>：系数贡献 66.1% &gt; 50% → <b>系数主导</b>（调系数有效；若为效期下限主导或 MOQ 主导，调系数无效）</div>
+          <div><b>调参建议</b>：① 优先调区域系数 —— 湖北 1.196 → 1.10、辽宁 1.188 → 1.10（预计偏差降至 ~5%）② 备货系数 1.4 → 1.2 可再降 4~5pp</div>
+          <div style={{ color: 'var(--text-muted)' }}>💡 支持 what-if 实时预览：改完系数立即显示偏差率变化，无需重跑全流程</div>
         </div>
       </div>
 
@@ -1426,7 +1466,7 @@ function RightStep4Output({ productInfo }: { productInfo: NewProductInfo }) {
       <div className="card" style={{ borderColor: 'var(--warn)', background: 'rgba(245,158,11,0.02)' }}>
         <div className="card-title" style={{ color: 'var(--warn)' }}>📋 预警汇总 — 计算明细<button className="export-btn">📥 导出</button></div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.6 }}>
-          三道预警阈值：备货偏差 ≤10% ｜ MOQ取整偏差 ≤5% ｜ 安全库存 ≥5天
+          三道检测阈值（汇总自 Step 3 偏差率检测）：备货偏差 ≤10% ｜ MOQ取整偏差 ≤5% ｜ 安全库存 ≥5天
         </div>
 
         {warningDetail.map((m, i) => (
@@ -1506,7 +1546,7 @@ function RightStep4Output({ productInfo }: { productInfo: NewProductInfo }) {
             <tr><td style={{ fontWeight: 600 }}>Sheet1</td><td>门店明细</td><td className="num">{productInfo.storeCount.toLocaleString()} × 4物料 × W1-W4</td><td style={{ fontSize: 11 }}>逐门店逐物料计算结果</td></tr>
             <tr><td style={{ fontWeight: 600 }}>Sheet2</td><td>仓库汇总</td><td className="num">30+仓库 × 4物料</td><td style={{ fontSize: 11 }}>按仓库汇总统配+统配外</td></tr>
             <tr><td style={{ fontWeight: 600 }}>Sheet3</td><td>供应商分配</td><td className="num">6条</td><td style={{ fontSize: 11 }}>供应商份额+MOQ取整</td></tr>
-            <tr><td style={{ fontWeight: 600 }}>Sheet4</td><td>预警清单</td><td className="num">4物料 × 3预警</td><td style={{ fontSize: 11 }}>三道预警计算明细</td></tr>
+            <tr><td style={{ fontWeight: 600 }}>Sheet4</td><td>预警清单</td><td className="num">4物料 × 3项检测</td><td style={{ fontSize: 11 }}>三道检测计算明细</td></tr>
             <tr><td style={{ fontWeight: 600 }}>Sheet5</td><td>SCM导入模板</td><td className="num">—</td><td style={{ fontSize: 11 }}>可直接导入SCM系统</td></tr>
             <tr><td style={{ fontWeight: 600 }}>Sheet6</td><td>仓级统配对比</td><td className="num">8仓</td><td style={{ fontSize: 11 }}>预测统配 vs 实际统配，异常标记</td></tr>
           </tbody>
