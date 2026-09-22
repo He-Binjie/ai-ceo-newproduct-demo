@@ -797,7 +797,8 @@ function RightMonitorBoard() {
         {!isNational && (
           <div className="card" style={{ marginTop: 12, borderColor: 'var(--border-main)' }}>
             <div className="card-title">📋 全部 8 仓监控明细（预警项已高亮）</div>
-            <table className="data-table">
+            <div style={{ overflowX: 'auto' }}>
+            <table className="data-table" style={{ minWidth: 820 }}>
               <thead><tr><th>仓</th><th className="num">覆盖门店</th><th className="num">仓备货预测日均杯量</th><th className="num">仓实际日均杯量</th><th className="num">仓偏差率</th><th className="num">仓库可售天数</th><th className="num">仓预计门店可售天数</th><th>预警</th></tr></thead>
               <tbody>
                 {monitorWarehouses.map(w => (
@@ -818,6 +819,7 @@ function RightMonitorBoard() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
 
@@ -857,7 +859,8 @@ function RightParamPanel() {
         </div>
         {recalc && <div className="param-ok">✅ {recalc}</div>}
         {sheetHint && <div className="param-delay">⏳ {sheetHint}</div>}
-        <table className="data-table">
+        <div style={{ overflowX: 'auto' }}>
+        <table className="data-table" style={{ minWidth: 760 }}>
           <thead>
             <tr><th>参数</th><th>粒度</th><th>当前值</th><th>页面直接改</th><th>飞书底表改</th><th>生效方式</th></tr>
           </thead>
@@ -877,7 +880,10 @@ function RightParamPanel() {
                     <span style={{ fontSize: 12 }}>{values[p.key]}</span>
                   )}
                 </td>
-                <td>{p.pageEditable ? <span style={{ color: 'var(--good)', fontWeight: 600 }}>✅ 支持</span> : <span style={{ color: 'var(--text-muted)' }}>— 一期不改</span>}</td>
+                <td>
+                  {p.pageEditable ? <span style={{ color: 'var(--good)', fontWeight: 600 }}>✅ 支持</span> : <span style={{ color: 'var(--text-muted)' }}>— 一期不改</span>}
+                  {p.pageEditable && !p.numeric && <span className="param-hint"> 明细表内逐行改</span>}
+                </td>
                 <td>
                   {p.sheetEditable ? (
                     <span>
@@ -893,6 +899,7 @@ function RightParamPanel() {
             ))}
           </tbody>
         </table>
+        </div>
         <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.9 }}>
           <div>⏱️ <b>两个 N 别混</b>：<b>售卖天数 N</b> 是「仓实际日均杯量」的分母（最近 N 天、不含当天）；<b>订货天数 N</b> 是「仓库可售天数」的分母（仓物料订货日均 = 订货量 ÷ N 天）。两个都可改、默认都是 7 天。</div>
           <div style={{ color: 'var(--text-muted)' }}>数据来源：飞书多维表格（新品BOM / 供应商信息）→ 湖仓 → 本体；页面改不回写底表。</div>
