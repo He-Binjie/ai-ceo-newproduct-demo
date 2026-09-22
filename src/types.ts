@@ -18,8 +18,11 @@ export interface BOMRecord {
   // 新品维度字段（每行冗余）
   productName: string;       // 新品名称
   launchDate: string;        // 上新日
+  launchStartDate?: string;  // 上新开始时间（V7.6 新增，飞书表字段）
+  launchEndDate?: string;    // 上新结束时间（V7.6 新增，飞书表字段；上新期 1~3 个月）
   // 物料维度字段
   materialName: string;      // 原材料名称
+  mergedProductName?: string; // 合并品名（V7.6 新增：同物料多供应商统一维度。门店→仓全链路按合并品名聚合，仅 Step 7 供应商分配才拆 SKU/规格/箱规）
   materialCode: string;      // 原材料编码（可能为空）
   spec: string;              // 规格型号
   unit: string;              // 单位
@@ -181,4 +184,34 @@ export interface WizardState {
   warehouseDistributionCompare?: WarehouseDistributionCompare[];  // 9/9新增
   warnings: Warning[];
   confirmed: boolean;
+}
+
+// ===== V7.6 新增：上新期间监控看板（演示态） =====
+export interface MonitorWarehouseRow {
+  warehouseName: string;
+  warehouseType: '一级仓' | '二级仓';
+  coversStores: number;
+  forecastDailyCups: number;    // 仓备货预测日均杯量 = 仓维度上新预测总量 ÷ 28
+  actualDailyCups: number;      // 仓实际日均杯量 = 仓对应门店成品销售杯量 ÷ 售卖天数 N（最近 N 天、不含当天）
+  deviationPct: number;         // 仓偏差率 =（实际 − 预测）÷ 预测 ×100%；|偏差| > 20% 触发预警
+  warehouseSellableDays: number;// 仓库可售天数 = 物料可用库存 ÷ 仓物料订货日均（订货量 ÷ 订货天数 N）
+  storeSellableDays: number;    // 仓预计门店可售天数 =（仓库可用库存+门店库存+门店在途）÷ 门店成品物料销量
+  isDeviationAlert: boolean;
+  isStockAlert: boolean;
+}
+
+export interface TrendPoint { day: number; date: string; cups: number; share: number; }
+export interface MonitorTrend { national: TrendPoint[]; byWarehouse: Record<string, TrendPoint[]>; }
+
+// ===== V7.6 新增：参数面板（所有参数都支持页面直接改） =====
+export interface ParamItem {
+  key: string;
+  name: string;
+  granularity: string;
+  value: string;
+  pageEditable: boolean;    // 页面直接改（所有参数都为 true）
+  sheetEditable: boolean;   // 飞书底表里也有该参数 → 底表改后系统 15–20 分钟才读到
+  effect: string;           // 生效方式
+  numeric?: boolean;        // 演示：可即时编辑的全局数值参数
+  unit?: string;
 }

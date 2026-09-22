@@ -1,5 +1,5 @@
 // 向磊飞书多维表格模板数据（V4 - 9/9会议修正：多品+预警+统配仓级视图）
-import type { BOMRecord, NewProductInfo, RegionCoefficient, StoreForecast, UnifiedDistribution, WarehouseDistributionCompare } from '../types';
+import type { BOMRecord, NewProductInfo, RegionCoefficient, StoreForecast, UnifiedDistribution, WarehouseDistributionCompare, MonitorWarehouseRow, MonitorTrend, TrendPoint, ParamItem } from '../types';
 
 // ===== 新品列表（Step 0 选择用） =====
 export const newProductList = [
@@ -15,7 +15,10 @@ export const mockBOMRecords: BOMRecord[] = [
     id: 'recHQ5NH2EgqKL',
     productName: '铁观音莲雾苹果',
     launchDate: '2026-09-15',
+    launchStartDate: '2026-09-15',
+    launchEndDate: '2026-10-14',
     materialName: '安溪铁观音',
+    mergedProductName: '安溪铁观音',
     materialCode: '20260901-001',
     spec: '50g/包×50包/箱',
     unit: '箱',
@@ -34,7 +37,10 @@ export const mockBOMRecords: BOMRecord[] = [
     id: 'recv1TFHkkJ9fC',
     productName: '铁观音莲雾苹果',
     launchDate: '2026-09-15',
+    launchStartDate: '2026-09-15',
+    launchEndDate: '2026-10-14',
     materialName: '莲雾苹果汁',
+    mergedProductName: '莲雾苹果汁',
     materialCode: '20260902-002',
     spec: '1kg/瓶×12瓶/箱',
     unit: '箱',
@@ -53,7 +59,10 @@ export const mockBOMRecords: BOMRecord[] = [
     id: 'recL2WNmiqiCoR',
     productName: '铁观音莲雾苹果',
     launchDate: '2026-09-15',
+    launchStartDate: '2026-09-15',
+    launchEndDate: '2026-10-14',
     materialName: '冷冻生椰乳',
+    mergedProductName: '冷冻生椰乳',
     materialCode: '20260903-003',
     spec: '1kg/瓶×15瓶/箱',
     unit: '瓶',
@@ -72,7 +81,10 @@ export const mockBOMRecords: BOMRecord[] = [
     id: 'reccZlrhQV3VC3',
     productName: '铁观音莲雾苹果',
     launchDate: '2026-09-15',
+    launchStartDate: '2026-09-15',
+    launchEndDate: '2026-10-14',
     materialName: '东方美人乌龙茶-A',
+    mergedProductName: '东方美人乌龙茶',
     materialCode: '0260815-004',
     spec: '1kg/瓶×12瓶/箱',
     unit: '箱',
@@ -95,7 +107,10 @@ export const mockBOMRecordsProduct2: BOMRecord[] = [
     id: 'recP2-001',
     productName: '铁观音凤梨白月光',
     launchDate: '2026-09-15',
+    launchStartDate: '2026-09-15',
+    launchEndDate: '2026-10-14',
     materialName: '安溪铁观音',  // 共用物料
+    mergedProductName: '安溪铁观音',
     materialCode: '20260901-001',
     spec: '50g/包×50包/箱',
     unit: '箱',
@@ -114,7 +129,10 @@ export const mockBOMRecordsProduct2: BOMRecord[] = [
     id: 'recP2-002',
     productName: '铁观音凤梨白月光',
     launchDate: '2026-09-15',
+    launchStartDate: '2026-09-15',
+    launchEndDate: '2026-10-14',
     materialName: '冷冻凤梨汁',
+    mergedProductName: '冷冻凤梨汁',
     materialCode: '20260904-005',
     spec: '1kg/瓶×12瓶/箱',
     unit: '箱',
@@ -133,7 +151,10 @@ export const mockBOMRecordsProduct2: BOMRecord[] = [
     id: 'recP2-003',
     productName: '铁观音凤梨白月光',
     launchDate: '2026-09-15',
+    launchStartDate: '2026-09-15',
+    launchEndDate: '2026-10-14',
     materialName: '冷冻生椰乳',  // 共用物料
+    mergedProductName: '冷冻生椰乳',
     materialCode: '20260903-003',
     spec: '1kg/瓶×15瓶/箱',
     unit: '瓶',
@@ -442,4 +463,91 @@ export const allWarehouseSummary = [
     { name: '冷冻生椰乳', allocationQty: 2345, extraStock: 1710, total: 4055, orderQty: 4060, unit: '瓶' },
     { name: '东方美人乌龙茶-A', allocationQty: 0, extraStock: 691, total: 691, orderQty: 693, unit: '箱' },
   ]},
+];
+
+// ================= V7.6 新增（9/22 罗雄会议）：监控看板 / 参数面板 =================
+// ⚠️ 本段全部为**演示态数据（mock）**，不是真实取数结果
+
+function monitorTrendFor(seed: number, baseCups: number, baseShare: number): TrendPoint[] {
+  const start = new Date('2026-09-15');
+  const out: TrendPoint[] = [];
+  for (let d = 1; d <= 30; d++) {
+    const dt = new Date(start.getTime() + (d - 1) * 86400000);
+    const weekend = (d % 7 === 6 || d % 7 === 0) ? 1.18 : 1.0;
+    const cups = Math.round(baseCups * weekend * (1 - 0.004 * (d - 1)) * (1 + 0.03 * Math.sin(d / 1.7 + seed)));
+    const share = Number((baseShare * (1 - 0.012 * (d - 1)) * (1 + 0.05 * Math.sin(d / 1.3 + seed))).toFixed(2));
+    out.push({ day: d, date: `${dt.getMonth() + 1}/${dt.getDate()}`, cups, share });
+  }
+  return out;
+}
+
+const MONITOR_WH_BASE: Array<{ name: string; dev: number; whDays: number; storeDays: number; share: number }> = [
+  { name: '北京二级仓', dev: 6.2,  whDays: 8.4,  storeDays: 14.2, share: 7.4 },
+  { name: '广东一级仓', dev: -8.4, whDays: 9.1,  storeDays: 15.6, share: 10.6 },
+  { name: '上海一级仓', dev: 12.1, whDays: 7.6,  storeDays: 13.1, share: 9.2 },
+  { name: '湖北一级仓', dev: 23.6, whDays: 4.1,  storeDays: 9.4,  share: 8.6 },
+  { name: '四川一级仓', dev: -5.3, whDays: 8.8,  storeDays: 14.0, share: 7.1 },
+  { name: '浙江一级仓', dev: -21.8, whDays: 5.3, storeDays: 11.2, share: 6.9 },
+  { name: '辽宁一级仓', dev: 4.4,  whDays: 6.6,  storeDays: 12.4, share: 5.8 },
+  { name: '天津一级仓', dev: 9.1,  whDays: 11.4, storeDays: 16.8, share: 6.4 },
+];
+
+function whStoreCount(name: string): number {
+  const info = allWarehouseSummary.find(a => a.warehouseName === name);
+  return info ? info.storeCount : 700;
+}
+
+export const monitorWarehouses: MonitorWarehouseRow[] = MONITOR_WH_BASE.map(w => {
+  const cov = whStoreCount(w.name);
+  const forecast = Math.round(cov * FIRST_WEEK);
+  const actual = Math.round(forecast * (1 + w.dev / 100));
+  return {
+    warehouseName: w.name,
+    warehouseType: w.name.includes('二级') ? '二级仓' : '一级仓',
+    coversStores: cov,
+    forecastDailyCups: forecast,
+    actualDailyCups: actual,
+    deviationPct: w.dev,
+    warehouseSellableDays: w.whDays,
+    storeSellableDays: w.storeDays,
+    isDeviationAlert: Math.abs(w.dev) > 20,
+    isStockAlert: w.whDays < 7,
+  };
+});
+
+export const monitorNational: MonitorWarehouseRow = {
+  warehouseName: '全国',
+  warehouseType: '一级仓',
+  coversStores: 7188,
+  forecastDailyCups: 7188 * FIRST_WEEK,
+  actualDailyCups: Math.round(7188 * FIRST_WEEK * 1.038),
+  deviationPct: 3.8,
+  warehouseSellableDays: 8.9,
+  storeSellableDays: 14.6,
+  isDeviationAlert: false,
+  isStockAlert: false,
+};
+
+export const monitorTrend: MonitorTrend = {
+  national: monitorTrendFor(0.4, 7188 * FIRST_WEEK, 6.8),
+  byWarehouse: MONITOR_WH_BASE.reduce((acc, w) => {
+    acc[w.name] = monitorTrendFor(0.4 + w.share / 10, whStoreCount(w.name) * FIRST_WEEK, w.share);
+    return acc;
+  }, {} as Record<string, TrendPoint[]>),
+};
+
+// 参数面板：V7.6 规则 = 所有参数都支持页面直接改；底表里也有的可两处改（底表改 15–20 分钟后生效）；计算以页面当前值为准
+export const paramList: ParamItem[] = [
+  { key: 'region', name: '区域系数', granularity: '分公司', value: '24 个子公司（湖北 1.196 最高）', pageEditable: true, sheetEditable: false, effect: '页面改即时生效 → 自动重算 Step ②-⑧' },
+  { key: 'stock',  name: '备货系数', granularity: '物料', value: '1.0 / 1.1 / 1.4', pageEditable: true, sheetEditable: true, effect: '页面改即时；底表改 → 15–20 分钟后被读到' },
+  { key: 'loss',   name: '损耗率', granularity: '物料', value: '1% ~ 3%', pageEditable: true, sheetEditable: true, effect: '页面改即时；底表改 → 15–20 分钟后被读到' },
+  { key: 'shelf',  name: '开封效期', granularity: '物料', value: '4 ~ 9 天', pageEditable: true, sheetEditable: true, effect: '页面改即时；底表改 → 15–20 分钟后被读到' },
+  { key: 'share',  name: '供应商份额', granularity: '供应商×物料', value: '安溪铁观音 60% / 40%；其余 100%', pageEditable: true, sheetEditable: true, effect: '页面改即时；底表改 → 15–20 分钟后被读到' },
+  { key: 'moq',    name: 'MOQ', granularity: '供应商×物料', value: '100 ~ 500', pageEditable: true, sheetEditable: true, effect: '页面改即时；底表改 → 15–20 分钟后被读到' },
+  { key: 'safety', name: '安全库存天数', granularity: '全局', value: '7', pageEditable: true, sheetEditable: false, effect: '页面改即时 → 重算安库校验', numeric: true, unit: '天' },
+  { key: 'sellN',  name: '售卖天数 N', granularity: '全局', value: '7', pageEditable: true, sheetEditable: false, effect: '页面改即时 → 重算「仓实际日均杯量」分母（最近 N 天、不含当天）', numeric: true, unit: '天' },
+  { key: 'orderN', name: '订货天数 N', granularity: '全局', value: '7', pageEditable: true, sheetEditable: false, effect: '页面改即时 → 重算「仓库可售天数」分母（仓物料订货日均 = 订货量 ÷ N 天）', numeric: true, unit: '天' },
+  { key: 'alertN', name: '预警阈值天数', granularity: '全局', value: '7', pageEditable: true, sheetEditable: false, effect: '页面改即时 → 库存预警触发条件（仓库可售天数 < N 天）', numeric: true, unit: '天' },
+  { key: 'devTh',  name: '销量偏差阈值', granularity: '全局', value: '20', pageEditable: true, sheetEditable: false, effect: '页面改即时 → 销量偏差预警触发条件（|偏差| > 20%）', numeric: true, unit: '%' },
+  { key: 'stores', name: '门店数', granularity: '全局', value: '7,188（系统自动获取）', pageEditable: false, sheetEditable: false, effect: '一期不改（二期支持门店增减，通过区域系数/备货系数替代）' },
 ];
