@@ -4,8 +4,12 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/build-wenshu.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/build-wenshu.mjs",
     "build": "tsc -b && vite build",
+    "build:wenshu": "node scripts/build-wenshu.mjs",
+    "build:wenshu:baseline": "node scripts/build-wenshu.mjs --update-baseline",
     "lint": "oxlint",
     "preview": "vite preview"
   },

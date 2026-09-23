@@ -1,0 +1,182 @@
+{
+  "generatedAt": "2026-09-23T13:49:32.483Z",
+  "source": {
+    "file": "src/skills/wenshu/demo.v4.3-0921.raw.html",
+    "bytes": 1654864,
+    "sha256": "1679991f93dd120ae185155a784408755220c0b035796a86fd870c1cc978930b"
+  },
+  "artifacts": {
+    "css": {
+      "file": "public/wenshu/wenshu.css",
+      "bytes": 134791,
+      "sourceBytes": 99373
+    },
+    "js": {
+      "file": "public/wenshu/wenshu.js",
+      "bytes": 1540104,
+      "sha256": "5ebe9262a068e7eba5c4f1dc4b5719b93cdd2c2eb8b7e67f82c35a47dd42858f",
+      "verbatim": true
+    },
+    "markup": {
+      "file": "src/skills/wenshu/generated/wenshu.markup.html",
+      "bytes": 13102,
+      "topLevelChildren": 12
+    },
+    "header": {
+      "file": "src/skills/wenshu/generated/wenshu.header.html",
+      "bytes": 1378,
+      "ids": [
+        "wenshu-header",
+        "navHome",
+        "navBoard",
+        "bcCur",
+        "alertBadge",
+        "bellPop",
+        "bpCount",
+        "bpList",
+        "clock"
+      ]
+    }
+  },
+  "css": {
+    "scopePrefix": ":is(#wenshu-root, #wenshu-header)",
+    "rootScope": "#wenshu-root",
+    "rules": 1018,
+    "selectors": 1045,
+    "atRules": 16,
+    "keyframesPassthrough": 7,
+    "otherAtPassthrough": 0,
+    "bodyGatedRules": 14,
+    "droppedBodyPrefix": 3,
+    "rootTokenRules": 1,
+    "important": 2,
+    "mediaQueries": 9
+  },
+  "js": {
+    "idsReferenced": 92,
+    "inlineOnclickAttr": 42,
+    "bodyClassNameWrites": 4,
+    "bodyClassListOps": 10
+  },
+  "ids": {
+    "bodyTotal": 62,
+    "inMarkup": 55,
+    "inHeader": 9,
+    "droppedWithBrand": []
+  },
+  "bodyAttrs": {
+    "class": "m-chat"
+  },
+  "assertions": [
+    {
+      "name": "CSS 改写器 identity 模式 == 原文（证明无丢件）",
+      "ok": true,
+      "detail": "len 99373 vs 99373"
+    },
+    {
+      "name": "CSS 解析无损（切片拼回 == 原文）",
+      "ok": true,
+      "detail": "len 99373 vs 99373"
+    },
+    {
+      "name": "CSS 输出花括号平衡",
+      "ok": true,
+      "detail": "{ 1047 vs } 1047"
+    },
+    {
+      "name": "CSS 输出无未作用域选择器",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "<body> 定位成功",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "找到 .topbar 顶层块",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "找到 .topbar-center",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "找到 .topbar-right",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "找到 .brand（将被丢弃）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": ".topbar 顶层子块数 == 3",
+      "ok": true,
+      "detail": "brand,topbar-center,topbar-right"
+    },
+    {
+      "name": "body 内找到她的内联 <script>（应被抽走）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "所有 id 都有归属（markup/header/已丢弃）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "动态 id 集合 == 基线（她改了运行时生成逻辑要复核）",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "她 JS 引用的静态 id 全在 markup/header 中",
+      "ok": true,
+      "detail": ""
+    },
+    {
+      "name": "关键 id #bellPop 落位",
+      "ok": true,
+      "detail": "header"
+    },
+    {
+      "name": "关键 id #bcCur 落位",
+      "ok": true,
+      "detail": "header"
+    },
+    {
+      "name": "关键 id #navHome 落位",
+      "ok": true,
+      "detail": "header"
+    },
+    {
+      "name": "关键 id #navBoard 落位",
+      "ok": true,
+      "detail": "header"
+    },
+    {
+      "name": "关键 id #meMask 落位",
+      "ok": true,
+      "detail": "root"
+    },
+    {
+      "name": "关键 id #chatMsgs 落位",
+      "ok": true,
+      "detail": "root"
+    },
+    {
+      "name": "关键 id #alertBadge 落位",
+      "ok": true,
+      "detail": "header"
+    },
+    {
+      "name": "JS 产物 verbatim（sha256 与源切片一致）",
+      "ok": true,
+      "detail": ""
+    }
+  ]
+}
