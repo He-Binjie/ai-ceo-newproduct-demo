@@ -29,6 +29,19 @@ const SKILLS = [
 
 type Step = 0 | 1 | 2 | 3 | 4 | 5;
 
+/**
+ * 合并问数模块（B 方案 · 同文档挂载）：
+ *   壳只有一个（我们的 header），技能切换＝两个顶层容器的可见性切换。
+ *   'newproduct' = 我们的新品分仓（#np-root 里的主内容区可见）
+ *   'wenshu'     = 朱仙的问数整页（#wenshu-root 可见，我们的 .main-content 藏起来）
+ * 可见性规则落在 src/wenshu-shell.css（用 html[data-skill] 选择器，不用 body.className ——
+ * 她的 JS 会整体重写 body.className，用 body 类做技能态会被她的移动端逻辑冲掉）。
+ */
+type SkillMode = 'newproduct' | 'wenshu';
+
+/** 她 header 槽位搬进我们 header 用的挂载点 id（搬家用 appendChild 移动同一批 DOM 节点） */
+const WENSHU_SLOT_IDS = ['wenshu-header-center', 'wenshu-header-right'] as const;
+
 // ============ B-4：参数「粒度清单」（三入口同源用） ============
 // 页面内联编辑 / 参数面板 / 对话 三处写同一份 value store；
 // 对话入口用下面的 known 列表做智能匹配，避免出现「对话说改了、表格没变」。
@@ -156,6 +169,8 @@ function App() {
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [activeSkill, setActiveSkill] = useState(SKILLS[0]);
+  // 合并问数模块（朱仙 V4.3）：壳只有一个，选「智能问数」时把可见性交给她的整页
+  const [skillMode, setSkillMode] = useState<SkillMode>('newproduct');
   const [selectedProduct, setSelectedProduct] = useState<string[]>([]);
   const [activeBOMTab, setActiveBOMTab] = useState(0);
   const [skillSelected, setSkillSelected] = useState(false);
@@ -174,6 +189,48 @@ function App() {
   useEffect(() => {
     if (step >= 1) setRightTab(step);
   }, [step]);
+
+  // ============ 合并问数模块（B 方案）：技能态 → DOM ============
+  // ① 顶栏槽位搬移：把她的 #wenshu-header-center / #wenshu-header-right **移动**（不是复制）进我们 header，
+  //    节点身份不变 → 她脚本里 getElementById 缓存的引用依然有效（规格 §3.3 方案 b）
+  const slotsMoved = useRef(false);
+  useEffect(() => {
+    if (slotsMoved.current) return;
+    slotsMoved.current = true;
+    WENSHU_SLOT_IDS.forEach(id => {
+      const node = document.getElementById(id);
+      const holder = document.getElementById(`slot-${id}`);
+      if (node && holder) {
+        // 防御：产物不该带 hidden（hidden → display:none → 坑 1 的 echarts 0×0），
+        // 可见性一律由 src/wenshu-shell.css 决定
+        node.removeAttribute('hidden');
+        holder.appendChild(node);
+      } else console.warn(`[ai-ceo] 问数 header 槽位搬移失败：${id}`);
+    });
+  }, []);
+
+  // ② 技能态 → html[data-skill]，可见性由 wenshu-shell.css 控制
+  useEffect(() => {
+    document.documentElement.dataset.skill = skillMode;
+    // 坑 1（echarts 在不可见容器 init → 0 宽高）：我们用 visibility 而非 display 藏她的整页，
+    // 容器始终有真实尺寸；这里再补一次 resize，让她自己的 resize 监听把图表按当前宽度重排。
+    if (skillMode === 'wenshu') {
+      const t = window.setTimeout(() => window.dispatchEvent(new Event('resize')), 60);
+      return () => window.clearTimeout(t);
+    }
+  }, [skillMode]);
+
+  // ③ 双向路由：她的技能弹层选「新品分货」→ 切回我们的新品分仓（见 public/wenshu/shell-bridge.js）
+  //    ⚠️ 我方代码只允许暴露这一个 window 全局（规格 §4 坑 2：她 200+ 处 onclick 依赖 window 全局）
+  useEffect(() => {
+    (window as Window & { __aiCeoSwitchSkill?: (id: string) => void }).__aiCeoSwitchSkill = (id: string) => {
+      setSkillMode(id === 'newproduct' ? 'newproduct' : 'wenshu');
+      setActiveSkill(SKILLS.find(s => (id === 'newproduct' ? s.id === 'newproduct' : s.id === 'query')) ?? SKILLS[0]);
+    };
+    return () => {
+      delete (window as Window & { __aiCeoSwitchSkill?: (id: string) => void }).__aiCeoSwitchSkill;
+    };
+  }, []);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -434,8 +491,15 @@ function App() {
     setActiveSkill(skill);
     setShowSkillPopup(false);
     if (skill.id === 'newproduct') {
+      setSkillMode('newproduct');
       showWelcome();
+    } else if (skill.id === 'query') {
+      // 合并问数模块：她的整页接管（一个壳 + 技能切换），不再回「开发中」
+      setSkillMode('wenshu');
+      setSkillSelected(true);
+      setMessages([]);
     } else {
+      setSkillMode('newproduct');
       setSkillSelected(true);
       setMessages([]);
       setTimeout(() => {
@@ -467,6 +531,9 @@ function App() {
           <span className="header-sep">/</span>
           <span className="header-current">{activeSkill.name}</span>
         </div>
+        {/* 合并问数模块：她 topbar 中区（经营首页/自助取数/面包屑）搬进来的挂载点。
+            holder 由 React 渲染，her 的节点在 useEffect 里被 appendChild 移动进来（节点身份不变）。 */}
+        <div id="slot-wenshu-header-center" />
         <div className="user-info">
           <span className="mock-badge" title="当前页面所有数字为演示数据（mock），非真实取数结果">演示数据（mock）</span>
           <button className={`guide-btn ${showGuide ? 'active' : ''}`} onClick={() => setShowGuide(!showGuide)}>
@@ -475,6 +542,8 @@ function App() {
           <span className="clock">{new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</span>
           <div className="user-avatar">罗</div>
         </div>
+        {/* 合并问数模块：她 topbar 右侧区（铃铛/时钟/我的）搬进来的挂载点 */}
+        <div id="slot-wenshu-header-right" />
       </header>
 
       {/* Main Content */}

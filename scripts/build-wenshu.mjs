@@ -5,8 +5,13 @@
  * 产物：
  *   public/wenshu/wenshu.css            ← 她的 <style>，全部作用域化（prefix :is(#wenshu-root, #wenshu-header)）
  *   public/wenshu/wenshu.js             ← 她的内联 <script>，verbatim 不改一字
- *   src/skills/wenshu/generated/wenshu.markup.html   ← <div id="wenshu-root" hidden> + 她 body 的子节点（去掉 .topbar 三块、去掉她的 <script>）
- *   src/skills/wenshu/generated/wenshu.header.html   ← <div id="wenshu-header" hidden> + 她 topbar 的 .topbar-center / .topbar-right（搬进我们 header）
+ *   src/skills/wenshu/generated/wenshu.markup.html   ← <div id="wenshu-root"> + 她 body 的子节点（去掉 .topbar 三块、去掉她的 <script>）
+ *   src/skills/wenshu/generated/wenshu.header.html   ← 两个槽位 <div id="wenshu-header-center|right"> + 她 topbar 的 .topbar-center / .topbar-right（搬进我们 header）
+ *   src/skills/wenshu/generated/wenshu.vendor.html   ← 她 <head> 的外链依赖（echarts / xlsx）→ 映射到 public/wenshu/vendor/ 本地文件
+ *
+ * ⚠️ 产物**不带 `hidden` 属性**：`hidden` 会被 UA 样式表解析成 `display:none`，
+ *    而坑 1（echarts 在 display:none 容器 init → 0 宽高）正是靠「容器始终有真实尺寸」规避的。
+ *    可见性完全交给 src/wenshu-shell.css（visibility / display 都在那儿）。
  *   src/skills/wenshu/generated/manifest.json        ← sha256 / 规则数 / 断言结果
  *
  * 铁律：断言失败 = 构建报错（她改了结构 → 构建脚本要跟着改，绝不静默放过）
@@ -25,12 +30,17 @@ const GEN = path.join(ROOT, 'src/skills/wenshu/generated')
 const PUB = path.join(ROOT, 'public/wenshu')
 
 // 作用域前缀：
-//  - #wenshu-root  = 她的整页（chat-panel + main-panel + 抽屉/遮罩/预警中心）
-//  - #wenshu-header= 搬进我们 header 的 .topbar-center / .topbar-right（见规格 §3.3 方案 b）
+//  - #wenshu-root          = 她的整页（chat-panel + main-panel + 抽屉/遮罩/预警中心）
+//  - #wenshu-header-center / #wenshu-header-right = 搬进我们 header 的 .topbar-center / .topbar-right（见规格 §3.3 方案 b）
 // 规格 §3.5 只写了 #wenshu-root；搬移后她的 .topbar* 规则必须也能命中搬出去的节点，
-// 故统一用 :is() 双根前缀（:is() 取最高特异性 = 单个 id，特异性与只写 #wenshu-root 一致）。
-const SCOPE = ':is(#wenshu-root, #wenshu-header)'
+// 故统一用 :is() 多根前缀（:is() 取最高特异性 = 单个 id，特异性与只写 #wenshu-root 一致）。
+const SCOPE = ':is(#wenshu-root, #wenshu-header-center, #wenshu-header-right)'
 const ROOT_SCOPE = '#wenshu-root'
+const HEADER_SLOTS = [
+  { id: 'wenshu-header-center', cls: 'topbar-center' },
+  { id: 'wenshu-header-right', cls: 'topbar-right' },
+]
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 
 const problems = []
 const assertions = []
@@ -332,6 +342,46 @@ const jsStart = sm.index + sm[0].length
 const jsEnd = raw.indexOf('</script>', jsStart)
 const jsSource = raw.slice(jsStart, jsEnd)
 
+// --- 3.1b <head> 里的外链依赖（echarts / xlsx）---
+// 她的两个 CDN <script> 在 <head>：只抽 <body> 会把它们整块丢掉 →
+// 问数模式的图表（echarts）与导出（xlsx）全废（她只能退化成「图表组件加载失败」文字）。
+// 处理：按下表把 CDN 地址映射到仓库内本地文件（即规格 §6/§7 的「CDN 本地化」）。
+// 为何提到 P2 而不留到 P7：P4 的硬验收指标「#trendChart/#invChart 的 canvas 宽高非 0」
+// 要求 echarts 真的加载；而且对外演示现场断网 = CDN 白屏。
+const VENDOR = [
+  { match: /cdn\.jsdelivr\.net\/npm\/echarts@5\.5\.0\//, local: 'wenshu/vendor/echarts.min.js' },
+  { match: /cdn\.jsdelivr\.net\/npm\/xlsx@0\.18\.5\//, local: 'wenshu/vendor/xlsx.full.min.js' },
+]
+const headInner = raw.slice(raw.indexOf('<head'), raw.indexOf('</head>'))
+// ⚠️ 必须连结束标签一起抓：她写的是 `<script src=...></script>`（两个标签紧邻），
+//    只抓开标签会把产物变成未闭合的 <script> → HTML 解析器会把它后面的 script 标签当成
+//    它的文本内容吞掉（实测症状：xlsx 与 wenshu.js 整条不再加载，her 的函数全 undefined）。
+const headScripts = [...headInner.matchAll(/<script\b[^>]*\ssrc\s*=\s*"([^"]+)"[^>]*>\s*<\/script\s*>/gi)].map((m) => ({ tag: m[0], src: m[1] }))
+assert('她 <head> 里的外链依赖数 == 2（新增依赖要先补 VENDOR 表）', headScripts.length === 2, `实测 ${headScripts.length} 个`)
+const vendorDeps = []
+for (const hs of headScripts) {
+  const hit = VENDOR.find((v) => v.match.test(hs.src))
+  assert(`外链依赖已登记（${hs.src.slice(0, 56)}）`, !!hit, hit ? hit.local : '未登记 → 她加了新依赖，先补 VENDOR 表 + 下载到 public/wenshu/vendor/')
+  if (!hit) continue
+  const abs = path.join(ROOT, 'public', hit.local)
+  assert(`本地依赖文件存在（${hit.local}）`, fs.existsSync(abs), '缺失 → 用 scripts/fetch-wenshu-vendor.sh 下载')
+  const vjs = fs.existsSync(abs) ? fs.readFileSync(abs, 'utf8') : ''
+  vendorDeps.push({ cdn: hs.src, local: hit.local, bytes: Buffer.byteLength(vjs), sha256: sha256(vjs), tag: hs.tag })
+}
+// 产物：`__BASE__` 由 vite.config.ts 的 wenshuShell 插件替换成 base；保留她原有的 onerror（她靠 __echarts_failed / __xlsx_failed 做缺依赖降级）。
+const vendorInner = vendorDeps
+  .map((d) => d.tag
+    .replace(/<script\b/i, '<script defer')
+    .replace(/src\s*=\s*"[^"]*"/i, 'src="__BASE__/' + d.local + '"')
+    .replace(/\s*<\/script\s*>\s*$/i, '</script>'))
+  .join('\n')
+// 产物自检：script 开闭标签必须配平（不配平 = 解析器吞后面的标签，见上面的注释）
+{
+  const o = (vendorInner.match(/<script\b/g) || []).length
+  const c = (vendorInner.match(/<\/script\s*>/g) || []).length
+  assert('vendor 产物 <script> 开闭标签配平', o === c && o === vendorDeps.length, `开 ${o} / 闭 ${c}`)
+}
+
 // --- 3.2 CSS 作用域化 ---
 // 先跑 identity（不发前缀）验证改写器逐字复刻，再跑真作用域化
 const identity = runTransform(cssSource, true)
@@ -358,7 +408,7 @@ const { out: cssScoped, stats: cssStats } = runTransform(cssSource, false)
         s.startsWith(`${SCOPE} `) ||
         s.startsWith(`${SCOPE}*`) ||
         s.startsWith(`${ROOT_SCOPE}`) ||
-        /^body(\.[\w-]+)+(:[\w-]+(\([^)]*\))?)*\s+(:is\(#wenshu-root, #wenshu-header\)|#wenshu-root)/.test(s)
+        new RegExp(`^body(\\.[\\w-]+)+(:[\\w-]+(\\([^)]*\\))?)*\\s+(${escapeRe(SCOPE)}|${ROOT_SCOPE})`).test(s)
       if (!okScoped) bad.push(s.slice(0, 120))
     }
   }
@@ -393,7 +443,10 @@ assert('找到 .brand（将被丢弃）', !!tbBrand)
 assert('.topbar 顶层子块数 == 3', tbChildren.filter((c) => c.kind === 'el').length === 3,
   tbChildren.filter((c) => c.kind === 'el').map((c) => (attrsOf(topbarInner, c.start, c.end)['class'] || '?')).join(','))
 
-const headerInner = '<div id="wenshu-header" hidden>' + (tbCenter ? topbarInner.slice(tbCenter.start, tbCenter.end) : '') + '\n' + (tbRight ? topbarInner.slice(tbRight.start, tbRight.end) : '') + '\n</div>'
+const headerInner = HEADER_SLOTS.map(({ id, cls }) => {
+  const blk = findTb(cls)
+  return `<div id="${id}">${blk ? topbarInner.slice(blk.start, blk.end) : ''}</div>`
+}).join('\n')
 
 // markup = body 子节点，去掉 .topbar（三块）与她的内联 <script>
 const scriptItem = children.find((it) => it.kind === 'el' && it.name === 'script')
@@ -401,7 +454,7 @@ assert('body 内找到她的内联 <script>（应被抽走）', !!scriptItem)
 const markupChildren = children.filter((it) => it !== topbar && it !== scriptItem)
 const markupInner = markupChildren.map(sliceOf).join('')
 const markup = '<!-- AUTO-GENERATED by scripts/build-wenshu.mjs — 不要手改；改她的原文件后 npm run build -->\n' +
-  '<div id="wenshu-root" hidden>\n' + markupInner + '\n</div>\n'
+  '<div id="wenshu-root">\n' + markupInner + '\n</div>\n'
 
 // --- 3.4 id 账本 ---
 const bodyMarkupOnly = children.filter((it) => it !== scriptItem).map((it) => bodyInner.slice(it.start, it.end)).join('')
@@ -435,7 +488,7 @@ const staticMissing = dynamicIds.filter((x) => idsIn(bodyMarkupOnly).includes(x)
 assert('她 JS 引用的静态 id 全在 markup/header 中', staticMissing.length === 0, staticMissing.join(','))
 
 // 关键 id 显式点名（规格 §7 P1 / 必做 2）
-for (const must of ['bellPop', 'bcCur', 'navHome', 'navBoard', 'meMask', 'chatMsgs', 'alertBadge']) {
+for (const must of ['bellPop', 'bcCur', 'navHome', 'navBoard', 'meMask', 'chatMsgs', 'alertBadge', 'wenshu-header-center', 'wenshu-header-right']) {
   const where = markupIds.has(must) ? 'root' : headerIds.has(must) ? 'header' : null
   assert(`关键 id #${must} 落位`, !!where, where || '缺失')
 }
@@ -447,15 +500,20 @@ fs.writeFileSync(path.join(PUB, 'wenshu.css'), cssScoped, 'utf8')
 fs.writeFileSync(path.join(PUB, 'wenshu.js'), jsSource, 'utf8')
 fs.writeFileSync(path.join(GEN, 'wenshu.markup.html'), markup, 'utf8')
 fs.writeFileSync(path.join(GEN, 'wenshu.header.html'), '<!-- AUTO-GENERATED by scripts/build-wenshu.mjs — 不要手改 -->\n' + headerInner + '\n', 'utf8')
+fs.writeFileSync(path.join(GEN, 'wenshu.vendor.html'), '<!-- AUTO-GENERATED by scripts/build-wenshu.mjs — 不要手改 -->\n' + vendorInner + '\n', 'utf8')
+// 坑 1 的纹丝：产物里不能出现 hidden 属性（它 = display:none = echarts 量到 0×0）
+assert('产物不含 hidden 属性（可见性只由 wenshu-shell.css 决定）',
+  !/\shidden[\s>]/.test(markup) && !/\shidden[\s>]/.test(headerInner), '命中 hidden 属性')
 
 const manifest = {
   generatedAt: new Date().toISOString(),
-  source: { file: path.relative(ROOT, RAW), bytes: raw.length, sha256: rawSha },
+  source: { file: path.relative(ROOT, RAW), chars: raw.length, bytes: Buffer.byteLength(raw), sha256: rawSha },
   artifacts: {
-    css: { file: 'public/wenshu/wenshu.css', bytes: cssScoped.length, sourceBytes: cssSource.length },
-    js: { file: 'public/wenshu/wenshu.js', bytes: jsSource.length, sha256: sha256(jsSource), verbatim: sha256(jsSource) === sha256(raw.slice(jsStart, jsEnd)) },
-    markup: { file: 'src/skills/wenshu/generated/wenshu.markup.html', bytes: markup.length, topLevelChildren: markupChildren.filter((c) => c.kind === 'el').length },
-    header: { file: 'src/skills/wenshu/generated/wenshu.header.html', bytes: headerInner.length, ids: [...headerIds] },
+    css: { file: 'public/wenshu/wenshu.css', chars: cssScoped.length, bytes: Buffer.byteLength(cssScoped), sourceChars: cssSource.length, sourceBytes: Buffer.byteLength(cssSource) },
+    js: { file: 'public/wenshu/wenshu.js', chars: jsSource.length, bytes: Buffer.byteLength(jsSource), sha256: sha256(jsSource), verbatim: sha256(jsSource) === sha256(raw.slice(jsStart, jsEnd)) },
+    markup: { file: 'src/skills/wenshu/generated/wenshu.markup.html', chars: markup.length, bytes: Buffer.byteLength(markup), topLevelChildren: markupChildren.filter((c) => c.kind === 'el').length },
+    header: { file: 'src/skills/wenshu/generated/wenshu.header.html', chars: headerInner.length, bytes: Buffer.byteLength(headerInner), ids: [...headerIds] },
+    vendor: { file: 'src/skills/wenshu/generated/wenshu.vendor.html', chars: vendorInner.length, deps: vendorDeps.map((d) => ({ cdn: d.cdn, local: d.local, bytes: d.bytes, sha256: d.sha256 })) },
   },
   css: {
     scopePrefix: SCOPE,
@@ -491,7 +549,8 @@ console.log(`  源        ${path.relative(ROOT, RAW)}  ${fmt(raw.length)} B  sha
 console.log(`  CSS       ${fmt(cssSource.length)} B → ${fmt(cssScoped.length)} B ｜ ${stats.rules} 规则 / ${stats.selectors} 选择器 / ${stats.atRules} at-rule / ${stats.keyframes} keyframes 原样`)
 console.log(`            作用域前缀 ${SCOPE}；body 门控 ${stats.bodyGated} 条；丢 body/html 前缀 ${stats.droppedBodyPrefix} 条；:root 令牌保持全局 ${stats.rootRules} 条`)
 console.log(`  JS        ${fmt(jsSource.length)} B verbatim  sha256 ${manifest.artifacts.js.sha256.slice(0, 12)}…`)
-console.log(`  markup    ${fmt(markup.length)} B ｜ 顶层子节点 ${manifest.artifacts.markup.topLevelChildren} ｜ id ${markupIds.size}`)
+console.log(`  markup    ${fmt(markup.length)} 字符 / ${fmt(Buffer.byteLength(markup))} B ｜ 顶层子节点 ${manifest.artifacts.markup.topLevelChildren} ｜ id ${markupIds.size}`)
+console.log(`  vendor    本地化 ${vendorDeps.length} 个依赖 ｜ ${vendorDeps.map((d) => d.local.split('/').pop() + ' ' + fmt(d.bytes) + 'B').join(' ｜ ')}`)
 console.log(`  header    ${fmt(headerInner.length)} B ｜ id ${headerIds.size}（${[...headerIds].join(', ')}）`)
 console.log(`  丢弃      .brand 块 ${brandBlock.length} B${droppedIds.length ? '（id: ' + droppedIds.join(', ') + '）' : '（无 id）'}`)
 console.log(`  断言      ${assertions.filter((a) => a.ok).length}/${assertions.length} 通过`)

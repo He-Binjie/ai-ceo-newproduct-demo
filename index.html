@@ -7,7 +7,11 @@
     <title>AI CEO · 新品分仓备货</title>
   </head>
   <body>
-    <div id="root"></div>
+    <!--
+      #np-root = 我们（新品分仓）的 CSS 作用域根：React 全部内容挂在这里面
+      #wenshu-root / #wenshu-header-* = 朱仙问数模块（由 vite.config.ts 的 wenshuShell 插件构建时注入）
+    -->
+    <div id="np-root"><div id="root"></div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

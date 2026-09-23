@@ -1,45 +1,70 @@
 {
-  "generatedAt": "2026-09-23T13:49:32.483Z",
+  "generatedAt": "2026-09-23T14:17:21.066Z",
   "source": {
     "file": "src/skills/wenshu/demo.v4.3-0921.raw.html",
-    "bytes": 1654864,
+    "chars": 1654864,
+    "bytes": 1767363,
     "sha256": "1679991f93dd120ae185155a784408755220c0b035796a86fd870c1cc978930b"
   },
   "artifacts": {
     "css": {
       "file": "public/wenshu/wenshu.css",
-      "bytes": 134791,
-      "sourceBytes": 99373
+      "chars": 164980,
+      "bytes": 166463,
+      "sourceChars": 99373,
+      "sourceBytes": 100856
     },
     "js": {
       "file": "public/wenshu/wenshu.js",
-      "bytes": 1540104,
+      "chars": 1540104,
+      "bytes": 1648543,
       "sha256": "5ebe9262a068e7eba5c4f1dc4b5719b93cdd2c2eb8b7e67f82c35a47dd42858f",
       "verbatim": true
     },
     "markup": {
       "file": "src/skills/wenshu/generated/wenshu.markup.html",
-      "bytes": 13102,
+      "chars": 13095,
+      "bytes": 15489,
       "topLevelChildren": 12
     },
     "header": {
       "file": "src/skills/wenshu/generated/wenshu.header.html",
-      "bytes": 1378,
+      "chars": 1413,
+      "bytes": 1580,
       "ids": [
-        "wenshu-header",
+        "wenshu-header-center",
         "navHome",
         "navBoard",
         "bcCur",
+        "wenshu-header-right",
         "alertBadge",
         "bellPop",
         "bpCount",
         "bpList",
         "clock"
       ]
+    },
+    "vendor": {
+      "file": "src/skills/wenshu/generated/wenshu.vendor.html",
+      "chars": 212,
+      "deps": [
+        {
+          "cdn": "https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js",
+          "local": "wenshu/vendor/echarts.min.js",
+          "bytes": 1029203,
+          "sha256": "42f8329d989b6f6539dd2b15bbdf0d82025762ac112fbb60dc57b27d7bcf3946"
+        },
+        {
+          "cdn": "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js",
+          "local": "wenshu/vendor/xlsx.full.min.js",
+          "bytes": 881727,
+          "sha256": "c9506197caf809a075b6dee1da0d36fb19da7158ffe8a88e7b0c96c5d8623c99"
+        }
+      ]
     }
   },
   "css": {
-    "scopePrefix": ":is(#wenshu-root, #wenshu-header)",
+    "scopePrefix": ":is(#wenshu-root, #wenshu-header-center, #wenshu-header-right)",
     "rootScope": "#wenshu-root",
     "rules": 1018,
     "selectors": 1045,
@@ -61,13 +86,43 @@
   "ids": {
     "bodyTotal": 62,
     "inMarkup": 55,
-    "inHeader": 9,
+    "inHeader": 10,
     "droppedWithBrand": []
   },
   "bodyAttrs": {
     "class": "m-chat"
   },
   "assertions": [
+    {
+      "name": "她 <head> 里的外链依赖数 == 2（新增依赖要先补 VENDOR 表）",
+      "ok": true,
+      "detail": "实测 2 个"
+    },
+    {
+      "name": "外链依赖已登记（https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.）",
+      "ok": true,
+      "detail": "wenshu/vendor/echarts.min.js"
+    },
+    {
+      "name": "本地依赖文件存在（wenshu/vendor/echarts.min.js）",
+      "ok": true,
+      "detail": "缺失 → 用 scripts/fetch-wenshu-vendor.sh 下载"
+    },
+    {
+      "name": "外链依赖已登记（https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.）",
+      "ok": true,
+      "detail": "wenshu/vendor/xlsx.full.min.js"
+    },
+    {
+      "name": "本地依赖文件存在（wenshu/vendor/xlsx.full.min.js）",
+      "ok": true,
+      "detail": "缺失 → 用 scripts/fetch-wenshu-vendor.sh 下载"
+    },
+    {
+      "name": "vendor 产物 <script> 开闭标签配平",
+      "ok": true,
+      "detail": "开 2 / 闭 2"
+    },
     {
       "name": "CSS 改写器 identity 模式 == 原文（证明无丢件）",
       "ok": true,
@@ -172,6 +227,21 @@
       "name": "关键 id #alertBadge 落位",
       "ok": true,
       "detail": "header"
+    },
+    {
+      "name": "关键 id #wenshu-header-center 落位",
+      "ok": true,
+      "detail": "header"
+    },
+    {
+      "name": "关键 id #wenshu-header-right 落位",
+      "ok": true,
+      "detail": "header"
+    },
+    {
+      "name": "产物不含 hidden 属性（可见性只由 wenshu-shell.css 决定）",
+      "ok": true,
+      "detail": "命中 hidden 属性"
     },
     {
       "name": "JS 产物 verbatim（sha256 与源切片一致）",

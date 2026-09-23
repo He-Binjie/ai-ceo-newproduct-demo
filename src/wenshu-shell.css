@@ -1,0 +1,70 @@
+/* ============================================================================
+ * 合并问数模块（朱仙 V4.3）外壳样式 —— B 方案 · 同文档挂载
+ *
+ * 这个文件**故意不走**我们的 CSS 作用域化（#np-root 前缀）：
+ * 它的职责恰恰是控制两个顶层容器（#np-root / #wenshu-root）之间的可见性。
+ * 除了下面的可见性规则，这里不放任何视觉样式（两边样式各自保持原样）。
+ *
+ * 关键决策 · 坑 1（规格 §4「echarts 在 display:none 容器里 init → 0 宽高、切回白板」）：
+ *   不用 display:none 藏她的整页，而用「固定占位 + visibility:hidden」——
+ *   容器始终有真实尺寸（视口宽 × (视口高 - 52px)），她的 echarts 在开场 opening() 时就能量到正确宽高；
+ *   切回问数时再补一次 window resize（她自己的 resize 监听会把图表 resize 回来）。
+ * ========================================================================== */
+
+/* 我们 header 的高度与她的 .topbar 一致（52px）—— 两套壳共用一个顶栏 */
+:root {
+  --shell-header-h: 52px;
+}
+
+/* 她整页的容器：始终占据「我们 header 以下」的全部空间，但默认不可见、不可点 */
+#wenshu-root {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: var(--shell-header-h);
+  bottom: 0;
+  /* ⚠️ display 必须显式写 block：千万不要靠 `hidden` 属性藏它 ——
+     `hidden` 会被 UA 样式表解析成 display:none，容器量到 0×0，
+     她在加载时就跑的 opening() 里的 echarts.init 就会得到空画布（坑 1 的真实成因）。 */
+  display: block;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: 5;
+}
+
+/* 搬到我们 header 里的两个槽位：默认不显示（新品分仓模式下顶栏是我们的口径） */
+#wenshu-header-center,
+#wenshu-header-right {
+  display: none;
+}
+
+/* ---- 问数模式（智能问数）：显示她的整页 + 她的顶栏槽位，藏我们主内容区 ---- */
+html[data-skill='wenshu'] #np-root .main-content {
+  display: none;
+}
+html[data-skill='wenshu'] .header-center {
+  display: none; /* 顶栏面包屑改由她的 #bcCur 提供，避免两条面包屑 */
+}
+html[data-skill='wenshu'] #wenshu-root {
+  visibility: visible;
+  pointer-events: auto;
+}
+html[data-skill='wenshu'] #wenshu-header-center {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 18px;
+}
+html[data-skill='wenshu'] #wenshu-header-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-left: auto;
+  margin-right: 14px;
+}
+/* 她顶栏右侧自带时钟，藏掉我们的时钟避免两个时间。
+   ⚠️ 必须用 `.app-header > .user-info > .clock`（直接子代链）而不是 `.app-header .clock` ——
+   她的槽位搬进我们 header 后就落在 #np-root 内部，后代选择器会连她的 `#clock`（class 也叫 clock）一起藏掉。 */
+html[data-skill='wenshu'] #np-root .app-header > .user-info > .clock {
+  display: none;
+}
