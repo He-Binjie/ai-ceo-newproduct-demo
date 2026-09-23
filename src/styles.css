@@ -1259,3 +1259,101 @@ body {
   padding: 5px 10px;
   margin-bottom: 8px;
 }
+
+/* ===================== C：页面内叙事 + 演示讲解 ===================== */
+
+/* 顶栏：演示数据徽标 + 演示讲解按钮 */
+.mock-badge {
+  font-size: 11px;
+  color: var(--warn);
+  background: rgba(245, 158, 11, 0.10);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 10px;
+  padding: 2px 9px;
+  margin-right: 10px;
+  white-space: nowrap;
+}
+.guide-btn {
+  font-size: 12px;
+  font-family: var(--font-sans);
+  color: var(--accent);
+  background: var(--bg-card);
+  border: 1px solid var(--border-secondary);
+  border-radius: 6px;
+  padding: 4px 11px;
+  margin-right: 12px;
+  cursor: pointer;
+  transition: all 0.18s;
+}
+.guide-btn:hover { border-color: var(--accent); background: var(--accent-light); }
+.guide-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* 右侧：本步在回答什么 / 本步可改 / PRD 步骤 */
+.narrative-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  background: var(--accent-light);
+  border: 1px solid var(--border-secondary);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-lg);
+  padding: 9px 14px;
+  margin-bottom: 12px;
+}
+.narrative-main { display: flex; align-items: baseline; gap: 8px; flex: 1 1 320px; }
+.narrative-side { display: flex; align-items: baseline; gap: 8px; flex: 0 1 auto; }
+.narrative-tag {
+  font-size: 10.5px;
+  color: var(--accent);
+  background: rgba(27, 77, 122, 0.08);
+  border-radius: 8px;
+  padding: 1px 7px;
+  white-space: nowrap;
+}
+.narrative-q { font-size: 13.5px; font-weight: 700; color: var(--text-main); }
+.narrative-edit { font-size: 12px; color: var(--text-secondary); }
+.narrative-map { font-size: 11px; color: var(--text-faint); }
+
+/* 演示讲解卡 */
+.guide-panel { margin-bottom: 12px; }
+.guide-lede { font-size: 12px; color: var(--text-muted); line-height: 1.8; margin-bottom: 10px; }
+.guide-step {
+  border: 1px solid var(--border-main);
+  border-radius: var(--radius-xl);
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  background: var(--bg-secondary);
+}
+.guide-step.current {
+  border-color: var(--accent);
+  background: rgba(27, 77, 122, 0.05);
+  box-shadow: var(--shadow-card);
+}
+.guide-step-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.guide-step-num {
+  width: 18px; height: 18px; flex: 0 0 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+.guide-step-title { font-size: 13px; font-weight: 700; color: var(--text-main); }
+.guide-step-prd { font-size: 11px; color: var(--text-faint); margin-left: auto; }
+.guide-step-line { font-size: 12.5px; color: var(--text-secondary); line-height: 1.75; }
+.guide-step-meta {
+  display: flex; flex-wrap: wrap; gap: 4px 18px;
+  font-size: 11px; color: var(--text-muted);
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border-main);
+}
+.guide-foot { font-size: 11.5px; color: var(--text-muted); line-height: 1.8; margin-top: 8px; }
+
+/* 允许换行的表格（用于宽文案场景，避免横向裁切） */
+.wrap-table th, .wrap-table td { white-space: normal; word-break: break-word; line-height: 1.7; vertical-align: top; }
+.wrap-table th:nth-child(1), .wrap-table td:nth-child(1) { width: 86px; }
+.wrap-table th:nth-child(2), .wrap-table td:nth-child(2) { width: 21%; }
+.wrap-table th:nth-child(3), .wrap-table td:nth-child(3) { width: 43%; }

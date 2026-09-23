@@ -3,6 +3,7 @@ import './styles.css';
 import type { ChatMessage, NewProductInfo, BOMMaterial, RegionCoefficient, ConfirmAction, MonitorWarehouseRow, ParamItem } from './types';
 import { mockProduct, mockMaterials, mockRegionCoefficients, historicalProducts, historicalProductsDetail, mockStoreSamples, nationalMaterialSummary, newProductList, mockBOMRecordsProduct2, mockSystemDataProduct2, mockWarehouseDistributionCompare, allWarehouseSummary, monitorNational, monitorWarehouses, monitorTrend, paramList } from './data/mock';
 import { parseIntent } from './engine/nlu';
+import { NARRATIVE, GUIDE_STEPS, STEP_MAPPING } from './data/narrative';
 
 // 简化为5步
 const STEP_LABELS = ['选择新品', '预测杯量', '系数修正+BOM拆解', '汇总到仓+供应商', '结果输出'];
@@ -35,7 +36,7 @@ function parseParameterAdjustment(text: string): { response: string; thinking: s
   if (regionMatch) {
     const [, subsidiary, value] = regionMatch;
     return {
-      response: `✅ 已调整区域系数\n\n• **${subsidiary}**：→ **${value}**\n\n**已重新计算** ✅ 右侧面板已跳转到 Step 2，请确认重算结果。\n\n💡 你还可以继续调整：\n• "调整区域系数 广东 1.05"\n• "调整备货系数 莲雾苹果汁 1.2"\n• "调整W1占比 0.06"\n• "安全库存改成7天"`,
+      response: `✅ 已调整区域系数\n\n• **${subsidiary}**：→ **${value}**\n\n**参数已更新**（演示态） 右侧面板已跳转到 Step 2，请确认重算结果。\n\n💡 你还可以继续调整：\n• "调整区域系数 广东 1.05"\n• "调整备货系数 莲雾苹果汁 1.2"\n• "调整W1占比 0.06"\n• "安全库存改成7天"`,
       thinking: [`修改区域系数：${subsidiary} → ${value}`, `自动定位到 Step 2 系数修正`, `已使用新系数重新计算物料量`],
       targetStep: 2,
     };
@@ -46,7 +47,7 @@ function parseParameterAdjustment(text: string): { response: string; thinking: s
   if (stockMatch) {
     const [, material, value] = stockMatch;
     return {
-      response: `✅ 已调整备货系数\n\n• **${material}**：→ **${value}**\n\n**已重新计算** ✅ 右侧面板已跳转到 Step 2，请确认重算结果。\n\n💡 你还可以继续调整其他参数。`,
+      response: `✅ 已调整备货系数\n\n• **${material}**：→ **${value}**\n\n**参数已更新**（演示态） 右侧面板已跳转到 Step 2，请确认重算结果。\n\n💡 你还可以继续调整其他参数。`,
       thinking: [`修改备货系数：${material} → ${value}`, `自动定位到 Step 2 BOM拆解`, `已使用新备货系数重新计算物料量`],
       targetStep: 2,
     };
@@ -57,8 +58,8 @@ function parseParameterAdjustment(text: string): { response: string; thinking: s
   if (wMatch) {
     const [, week, value] = wMatch;
     return {
-      response: `✅ 已调整${week}占比\n\n• **${week}**：→ **${value}**\n\n⚠️ W1-W4为成品维度参数，修改后所有物料同步生效。\n\n**已重新计算** ✅ 右侧面板已跳转到 Step 2，请确认重算结果。`,
-      thinking: [`修改${week}占比 → ${value}（成品维度，全物料生效）`, `自动定位到 Step 2 物料量计算`, `已重新计算所有物料 W1-W4 用量`],
+      response: `✅ 已调整${week}占比\n\n• **${week}**：→ **${value}**\n\n⚠️ W1-W4为成品维度参数，修改后所有物料同步生效。\n\n**参数已更新**（演示态） 右侧面板已跳转到 Step 2，请确认重算结果。`,
+      thinking: [`修改${week}占比 → ${value}（成品维度，全物料生效）`, `自动定位到 Step 2 物料量计算`, `已按新值更新（演示态）所有物料 W1-W4 用量`],
       targetStep: 2,
     };
   }
@@ -68,7 +69,7 @@ function parseParameterAdjustment(text: string): { response: string; thinking: s
   if (sellNMatch) {
     const [, days] = sellNMatch;
     return {
-      response: `✅ 已调整**售卖天数 N**\n\n• 售卖天数 N：7天 → **${days}天**（最近 ${days} 天、不含当天）\n• 影响：**仓实际日均杯量 = 仓对应门店成品销售杯量 ÷ 售卖天数**（监控看板「仓实际日均杯量」与「仓偏差率」随之重算）\n\n**已重新计算** ✅ 右侧面板已跳转到「参数面板」，请确认。`,
+      response: `✅ 已调整**售卖天数 N**\n\n• 售卖天数 N：7天 → **${days}天**（最近 ${days} 天、不含当天）\n• 影响：**仓实际日均杯量 = 仓对应门店成品销售杯量 ÷ 售卖天数**（监控看板「仓实际日均杯量」与「仓偏差率」随之重算）\n\n**参数已更新**（演示态） 右侧面板已跳转到「参数面板」，请确认。`,
       thinking: [`修改售卖天数 N：7 → ${days} 天`, '重算仓实际日均杯量分母', '联动重算仓偏差率 / 全国偏差率'],
       targetStep: 5,
     };
@@ -79,7 +80,7 @@ function parseParameterAdjustment(text: string): { response: string; thinking: s
   if (orderNMatch) {
     const [, days] = orderNMatch;
     return {
-      response: `✅ 已调整**订货天数 N**\n\n• 订货天数 N：7天 → **${days}天**（最近 ${days} 天）\n• 影响：**仓库可售天数 = 物料可用库存 ÷ 仓物料订货日均**，其中订货日均 = 订货量 ÷ 订货天数 N（监控看板「仓库可售天数」与库存预警随之重算）\n\n**已重新计算** ✅ 右侧面板已跳转到「参数面板」，请确认。`,
+      response: `✅ 已调整**订货天数 N**\n\n• 订货天数 N：7天 → **${days}天**（最近 ${days} 天）\n• 影响：**仓库可售天数 = 物料可用库存 ÷ 仓物料订货日均**，其中订货日均 = 订货量 ÷ 订货天数 N（监控看板「仓库可售天数」与库存预警随之重算）\n\n**参数已更新**（演示态） 右侧面板已跳转到「参数面板」，请确认。`,
       thinking: [`修改订货天数 N：7 → ${days} 天`, '重算仓物料订货日均（订货量 ÷ N 天）', '联动重算仓库可售天数 / 库存预警'],
       targetStep: 5,
     };
@@ -90,8 +91,8 @@ function parseParameterAdjustment(text: string): { response: string; thinking: s
   if (safetyMatch) {
     const [, days] = safetyMatch;
     return {
-      response: `✅ 已调整安全库存天数\n\n• 安全库存：5天 → **${days}天**\n\n**已重新计算** ✅ 右侧面板已跳转到 Step 3，请确认重算结果。`,
-      thinking: [`修改安全库存天数：5天 → ${days}天`, `自动定位到 Step 3 偏差率检测`, `已重新校验所有仓库安全库存`],
+      response: `✅ 已调整安全库存天数\n\n• 安全库存：7天 → **${days}天**\n\n**参数已更新**（演示态） 右侧面板已跳转到 Step 3，请确认重算结果。`,
+      thinking: [`修改安全库存天数：7天 → ${days}天`, `自动定位到 Step 3 偏差率检测`, `已重新校验所有仓库安全库存`],
       targetStep: 3,
     };
   }
@@ -101,8 +102,8 @@ function parseParameterAdjustment(text: string): { response: string; thinking: s
   if (supplierMatch) {
     const [, material, supplier, share, moq] = supplierMatch;
     return {
-      response: `✅ 已设置供应商信息\n\n• **${material}**\n  - 供应商：${supplier}\n  - 份额：${share}%\n  - MOQ：${moq || '1（默认）'}\n\n💡 份额之和必须=100%，可继续添加其他供应商。\n\n**已重新计算** ✅ 右侧面板已跳转到 Step 3，请确认重算结果。`,
-      thinking: [`设置供应商：${material} → ${supplier} ${share}% MOQ=${moq || 1}`, `自动定位到 Step 3 供应商分配`, `已重新计算供应商份额与MOQ取整`],
+      response: `✅ 已设置供应商信息\n\n• **${material}**\n  - 供应商：${supplier}\n  - 份额：${share}%\n  - MOQ：${moq || '1（默认）'}\n\n💡 份额之和必须=100%，可继续添加其他供应商。\n\n**参数已更新**（演示态） 右侧面板已跳转到 Step 3，请确认重算结果。`,
+      thinking: [`设置供应商：${material} → ${supplier} ${share}% MOQ=${moq || 1}`, `自动定位到 Step 3 供应商分配`, `已按新值更新（演示态）供应商份额与MOQ取整`],
       targetStep: 3,
     };
   }
@@ -110,7 +111,7 @@ function parseParameterAdjustment(text: string): { response: string; thinking: s
   // 帮助/可调参数列表 — 不跳转
   if (lower.includes('可调') || lower.includes('调参') || lower.includes('修改参数') || lower.includes('帮助') || lower.includes('help')) {
     return {
-      response: `📋 **可调整参数清单**\n\n以下参数支持在对话中直接输入修改：\n\n**1. 区域系数**（分公司维度）→ 影响 Step 2\n• 格式：\`调整区域系数 湖北 1.1\`\n• 说明：修改某子公司的区域系数\n\n**2. 备货系数**（物料维度）→ 影响 Step 2\n• 格式：\`调整备货系数 莲雾苹果汁 1.2\`\n• 说明：修改某物料的备货系数\n\n**3. W1-W4占比**（成品维度）→ 影响 Step 2\n• 格式：\`调整W1占比 0.06\`\n• 说明：修改后所有物料同步生效\n\n**4. 安全库存天数** → 影响 Step 3\n• 格式：\`安全库存改成7天\`\n• 说明：默认5天\n\n**5. 供应商信息** → 影响 Step 3\n• 格式：\`设置供应商 莲雾苹果汁 供应商A 40% MOQ500\`\n• 说明：份额之和必须=100%\n\n**6. 售卖天数 N**（全局，默认7天）→ 影响监控看板\n• 格式：\`售卖天数改成5天\`\n• 说明：「仓实际日均杯量」分母，最近 N 天、不含当天\n\n**7. 订货天数 N**（全局，默认7天）→ 影响监控看板\n• 格式：\`订货天数改成5天\`\n• 说明：「仓库可售天数」分母（仓物料订货日均 = 订货量 ÷ N 天）\n\n💡 所有参数也都可以在右侧「⚙️ 参数面板」里直接改（页面直接编辑）。`,
+      response: `📋 **可调整参数清单**\n\n以下参数支持在对话中直接输入修改：\n\n**1. 区域系数**（分公司维度）→ 影响 Step 2\n• 格式：\`调整区域系数 湖北 1.1\`\n• 说明：修改某子公司的区域系数\n\n**2. 备货系数**（物料维度）→ 影响 Step 2\n• 格式：\`调整备货系数 莲雾苹果汁 1.2\`\n• 说明：修改某物料的备货系数\n\n**3. W1-W4占比**（成品维度）→ 影响 Step 2\n• 格式：\`调整W1占比 0.06\`\n• 说明：修改后所有物料同步生效\n\n**4. 安全库存天数** → 影响 Step 3\n• 格式：\`安全库存改成7天\`\n• 说明：默认7天\n\n**5. 供应商信息** → 影响 Step 3\n• 格式：\`设置供应商 莲雾苹果汁 供应商A 40% MOQ500\`\n• 说明：份额之和必须=100%\n\n**6. 售卖天数 N**（全局，默认7天）→ 影响监控看板\n• 格式：\`售卖天数改成5天\`\n• 说明：「仓实际日均杯量」分母，最近 N 天、不含当天\n\n**7. 订货天数 N**（全局，默认7天）→ 影响监控看板\n• 格式：\`订货天数改成5天\`\n• 说明：「仓库可售天数」分母（仓物料订货日均 = 订货量 ÷ N 天）\n\n💡 所有参数也都可以在右侧「⚙️ 参数面板」里直接改（页面直接编辑）。`,
       thinking: ['展示可调参数清单'],
       targetStep: 0 as Step, // 0 means no navigation
     };
@@ -132,6 +133,7 @@ function App() {
   const [activeBOMTab, setActiveBOMTab] = useState(0);
   const [skillSelected, setSkillSelected] = useState(false);
   const [showSkillPopup, setShowSkillPopup] = useState(false);
+  const [showGuide, setShowGuide] = useState(false); // C：演示讲解卡（默认收起）
   const [rightTab, setRightTab] = useState<Step>(1);
   const [tongpeiDone, setTongpeiDone] = useState(false);
   const [supplierDone, setSupplierDone] = useState(false);
@@ -192,7 +194,7 @@ function App() {
     setMessages([]);
     setTimeout(() => {
       addBotMessage(
-        `你好！我是 **AI CEO 新品分仓助手** 📦\n\n基于历史新品数据预测新品首周/首月全国杯量，通过区域系数和备货系数修正后，经BOM拆解为物料需求，按仓库覆盖门店分配至各仓库，再匹配供应商产能生成采购建议单。\n\n请选择操作开始：`,
+        `你好！我是 **AI CEO 新品分仓助手** 📦\n\n基于历史新品数据预测新品首周/首月全国杯量，通过区域系数和备货系数修正后，经BOM拆解为物料需求，按仓库覆盖门店分配至各仓库，再按供应商份额与 MOQ 取整生成采购建议单。\n\n请选择操作开始：`,
         [],
         [],
         ['开始新品分仓'],
@@ -237,7 +239,7 @@ function App() {
       case 3:
         simulateTyping(
           `汇总到仓 + 偏差率检测完成 ✅\n\n🏭 **汇总到仓**（仓店映射9,708条）\n• 北京二级仓：莲雾苹果汁 **13,399** 瓶\n• 详见右侧各仓库汇总\n\n📊 **偏差率检测（计算过程监控，非预警）**\n• 安溪铁观音：备货偏差 5.2%（分仓计算值 vs 理论需求量） ✅ ｜ MOQ 0.03% ✅ ｜ 安库 20.3天 ✅\n• 莲雾苹果汁：备货偏差 8.6%（分仓计算值 vs 理论需求量） ✅ ｜ MOQ 0.055% ✅ ｜ 安库 17.2天 ✅\n• 冷冻生椰乳：备货偏差 **12.1%**（分仓计算值 vs 理论需求量） ❌ 超阈值 ｜ MOQ 0.18% ✅ ｜ 安库 11.8天 ✅\n• 东方美人乌龙茶-A：备货偏差 3.8%（分仓计算值 vs 理论需求量） ✅ ｜ MOQ 0.24% ✅ ｜ 安库 20.0天 ✅\n\n📦 **仓级统配对比**\n• 湖北一级仓：偏差 12.6% ⚠️ 异常\n• 浙江一级仓：偏差 14.1% ⚠️ 异常\n• 其余6仓均在10%以内 ✅\n\n📦 **供应商数据**\n供应商分配数据是否已确认？确认后我将进行份额分配与MOQ取整。\n\n💡 **如需调整参数，可直接输入：**\n• "调整区域系数 湖北 1.1"\n• "调整备货系数 莲雾苹果汁 1.2"\n• "调整W1占比 0.06"\n• "安全库存改成7天"\n• 输入"帮助"查看完整参数清单`,
-          ['读取仓店映射Sheet2：9,708条', '按仓库汇总门店物料量', '备货偏差/ MOQ取整/安全库存三道检测（物料维度，计算过程监控）'],
+          ['读取仓店映射Sheet2：9,708条', '按仓库汇总门店物料量', '备货偏差 / MOQ取整 / 安全库存 — A 类计算过程检测（物料维度）'],
           [{ label: '✅ 供应商数据已确认', type: 'supplier_confirm' }, { label: '⏸️ 供应商数据未到，暂停', type: 'supplier_skip' }, { label: '🔄 调参重跑', type: 'recalculate' }],
         );
         break;
@@ -403,6 +405,9 @@ function App() {
     }
   };
 
+  // C：叙事条跟随当前可见视图（未选品时右侧显示首页监控看板）
+  const narrativeTab = selectedProduct.length === 0 ? 0 : rightTab;
+
   return (
     <div className="app-container">
       {/* Header */}
@@ -422,6 +427,10 @@ function App() {
           <span className="header-current">{activeSkill.name}</span>
         </div>
         <div className="user-info">
+          <span className="mock-badge" title="当前页面所有数字为演示数据（mock），非真实取数结果">演示数据（mock）</span>
+          <button className={`guide-btn ${showGuide ? 'active' : ''}`} onClick={() => setShowGuide(!showGuide)}>
+            {showGuide ? '收起讲解' : '演示讲解'}
+          </button>
           <span className="clock">{new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })}</span>
           <div className="user-avatar">罗</div>
         </div>
@@ -517,7 +526,7 @@ function App() {
                             else if (action.type === 'notify') addBotMessage('📤 已发送飞书通知 ✅');
                             else if (action.type === 'skip') {
                               if (step === 3 && !tongpeiDone) {
-                                addBotMessage('⏸️ **统配数据未到，流程暂停**\n\n当前已完成：\n• ✅ 汇总到仓\n• ✅ 供应商分配\n• ✅ 三道检测（计算过程监控）\n\n等待统配数据到达后，输入"统配数据已到"或点击按钮继续。');
+                                addBotMessage('⏸️ **统配数据未到，流程暂停**\n\n当前已完成：\n• ✅ 汇总到仓\n• ✅ 供应商分配\n• ✅ A 类计算过程检测 3 项（物料维度）\n\n等待统配数据到达后，输入"统配数据已到"或点击按钮继续。');
                               } else if (selectedHistoricalProducts.size < historicalProductsDetail.length) {
                                 setSelectedHistoricalProducts(new Set(historicalProductsDetail.map(p => p.name)));
                                 simulateTyping(
@@ -538,7 +547,7 @@ function App() {
                                 setSelectedHistoricalProducts(aiSubset);
                                 setRightTab(2);
                                 simulateTyping(
-                                  `✅ 已切换为 **AI推荐子集**（${aiSubset.size}个历史品，相似度≥80%）\n\n区域系数已重新计算，详见右侧面板。\n\n你可以在右侧面板中逐个勾选/取消历史品，进一步微调选择。`,
+                                  `✅ 已切换为 **AI推荐子集**（${aiSubset.size}个历史品，相似度≥80%）\n\n区域系数已按新值更新（演示态），详见右侧面板。\n\n你可以在右侧面板中逐个勾选/取消历史品，进一步微调选择。`,
                                   ['筛选相似度≥80%的历史品：15个', '重新计算24个子公司区域系数均值', '右侧面板已更新'],
                                   [{ label: '✅ 确认，继续', type: 'confirm' }, { label: '↩️ 恢复全部23品', type: 'skip' }],
                                 );
@@ -556,7 +565,7 @@ function App() {
                               );
                             }
                             else if (action.type === 'supplier_skip') {
-                              addBotMessage('⏸️ **供应商数据未到，流程暂停**\n\n当前已完成：\n• ✅ 汇总到仓\n• ✅ 三道检测（物料维度，计算过程监控）\n\n等待供应商数据确认后，输入"供应商数据已确认"或点击按钮继续。\n\n⏰ 统配数据也请同步关注。');
+                              addBotMessage('⏸️ **供应商数据未到，流程暂停**\n\n当前已完成：\n• ✅ 汇总到仓\n• ✅ A 类计算过程检测 3 项（物料维度，不推送不阻断）\n\n等待供应商数据确认后，输入"供应商数据已确认"或点击按钮继续。\n\n⏰ 统配数据也请同步关注。');
                             }
                           }}
                           disabled={isTyping}
@@ -632,6 +641,20 @@ function App() {
 
         {/* Right: Data Display Only with Tabs */}
         <div className="right-panel">
+          {/* C：这一步在回答什么 + 本步可改 + PRD 步骤对应 */}
+          <div className="narrative-bar">
+            <div className="narrative-main">
+              <span className="narrative-tag">这一步在回答</span>
+              <span className="narrative-q">{NARRATIVE[narrativeTab]?.question}</span>
+            </div>
+            <div className="narrative-side">
+              <span className="narrative-tag">本步可改</span>
+              <span className="narrative-edit">{NARRATIVE[narrativeTab]?.canEdit}</span>
+            </div>
+            <div className="narrative-map" title="对应 PRD V7.6 算法链步骤">PRD {NARRATIVE[narrativeTab]?.prdSteps}</div>
+          </div>
+          {/* C：演示讲解卡（默认收起，演示时一键展开） */}
+          {showGuide && <GuidePanel currentStep={narrativeTab} />}
           {selectedProduct.length === 0 && <RightEmptyState />}
           {selectedProduct.length > 0 && (
             <>
@@ -718,6 +741,55 @@ function RightEmptyState() {
   );
 }
 
+/* ===================== C：演示讲解卡（页面内叙事） ===================== */
+function GuidePanel({ currentStep }: { currentStep: number }) {
+  // 讲解卡里的步骤序号与右侧 Tab 对齐：Tab1-4 ↔ 讲解 1-4，Tab0/5 为看板与参数面板
+  const highlight = currentStep >= 1 && currentStep <= 4 ? currentStep : 0;
+  return (
+    <div className="guide-panel">
+      <div className="card" style={{ borderColor: 'var(--accent)' }}>
+        <div className="card-title" style={{ color: 'var(--accent)' }}>
+          演示讲解 · 5 步口播词（结论先行，照读即可）
+        </div>
+        <div className="guide-lede">
+          讲解词与 <b>PRD V7.6</b> 口径一致；每步先给结论，再展开依据。当前页面对应第 {highlight || '—'} 步。
+        </div>
+        {GUIDE_STEPS.map(g => (
+          <div key={g.n} className={`guide-step ${highlight === g.n ? 'current' : ''}`}>
+            <div className="guide-step-head">
+              <span className="guide-step-num">{g.n}</span>
+              <span className="guide-step-title">{g.title}</span>
+              <span className="guide-step-prd">{g.prd}</span>
+            </div>
+            <div className="guide-step-line">{g.oneLiner}</div>
+            <div className="guide-step-meta">
+              <span><b>可改</b>：{g.canEdit}</span>
+              <span><b>关键数字</b>：{g.keyNumber}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="card">
+        <div className="card-title">PRD 12 步 ↔ 本 Demo 5 步 映射（讲解时不用脑内翻译）</div>
+        <table className="data-table">
+          <thead><tr><th>本 Demo</th><th>PRD V7.6 算法链</th></tr></thead>
+          <tbody>
+            {STEP_MAPPING.map((m, i) => (
+              <tr key={i}>
+                <td style={{ fontWeight: 600 }}>{m.demo}</td>
+                <td style={{ fontSize: 12 }}>{m.prd}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div className="guide-foot">
+          数字口径以 PRD V7.6 为准；预警只有 2 条（销量偏差 &gt;20%、仓库可售天数 &lt; N 天），其余为检测 / 监控项。
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ===================== V2.16 监控看板（新品分仓首页） ===================== */
 function RightMonitorBoard() {
   const [scope, setScope] = useState<string>('national');
@@ -754,18 +826,18 @@ function RightMonitorBoard() {
         </div>
 
         <div className="kpi-grid">
-          <div className="kpi-card"><div className="kpi-label">仓备货预测日均杯量</div><div className="kpi-value">{row.forecastDailyCups.toLocaleString()}<span className="kpi-unit">杯/天</span></div></div>
-          <div className="kpi-card"><div className="kpi-label">仓实际日均杯量</div><div className="kpi-value">{row.actualDailyCups.toLocaleString()}<span className="kpi-unit">杯/天</span></div></div>
+          <div className="kpi-card"><div className="kpi-label" title="口径：仓维度上新预测总量 ÷ 28（预测基准线）">仓备货预测日均杯量</div><div className="kpi-value">{row.forecastDailyCups.toLocaleString()}<span className="kpi-unit">杯/天</span></div></div>
+          <div className="kpi-card"><div className="kpi-label" title="口径：仓对应门店的成品销售杯量 ÷ 售卖天数 N（最近 N 天、不含当天，默认 7）">仓实际日均杯量</div><div className="kpi-value">{row.actualDailyCups.toLocaleString()}<span className="kpi-unit">杯/天</span></div></div>
           <div className="kpi-card" style={{ borderColor: Math.abs(row.deviationPct) > 20 ? 'var(--danger)' : undefined }}>
-            <div className="kpi-label">偏差率{isNational ? '（全国）' : '（仓）'}</div>
+            <div className="kpi-label" title="口径：（仓实际日均杯量 − 仓备货预测日均杯量）÷ 仓备货预测日均杯量 × 100%；|偏差| > 20% 触发预警">偏差率{isNational ? '（全国）' : '（仓）'}</div>
             <div className="kpi-value" style={{ color: devColor(row.deviationPct) }}>{row.deviationPct > 0 ? '+' : ''}{row.deviationPct}<span className="kpi-unit">%</span></div>
           </div>
           <div className="kpi-card" style={{ borderColor: row.isStockAlert ? 'var(--danger)' : undefined }}>
-            <div className="kpi-label">仓库可售天数</div>
+            <div className="kpi-label" title="口径：物料可用库存 ÷ 仓物料订货日均（订货量 ÷ 订货天数 N；数据源＝订货助手）">仓库可售天数</div>
             <div className="kpi-value" style={{ color: row.isStockAlert ? 'var(--danger)' : undefined }}>{row.warehouseSellableDays}<span className="kpi-unit">天</span></div>
           </div>
-          <div className="kpi-card"><div className="kpi-label">仓预计门店可售天数</div><div className="kpi-value">{row.storeSellableDays}<span className="kpi-unit">天</span></div></div>
-          <div className="kpi-card"><div className="kpi-label">覆盖门店</div><div className="kpi-value">{row.coversStores.toLocaleString()}<span className="kpi-unit">家</span></div></div>
+          <div className="kpi-card"><div className="kpi-label" title="口径：（仓库可用库存 + 门店库存 + 门店在途）÷ 门店成品物料销量（成品销量 × BOM）；仅展示、不监控">仓预计门店可售天数</div><div className="kpi-value">{row.storeSellableDays}<span className="kpi-unit">天</span></div></div>
+          <div className="kpi-card"><div className="kpi-label" title="该仓覆盖的在营门店数（辅助信息，非 PRD 六项监控指标）">覆盖门店</div><div className="kpi-value">{row.coversStores.toLocaleString()}<span className="kpi-unit">家</span></div></div>
         </div>
 
         <div className="card" style={{ marginTop: 12 }}>
@@ -845,7 +917,7 @@ function RightParamPanel() {
 
   const onPageEdit = (p: ParamItem, v: string) => {
     setValues(prev => ({ ...prev, [p.key]: v }));
-    setRecalc(`${p.name} → ${v}${p.unit || ''}：已重新计算（页面改即时生效）`);
+    setRecalc(`${p.name} → ${v}${p.unit || ''}：已按新值更新（演示态，未真实重算）｜页面改即时生效`);
     setSheetHint(null);
     setTimeout(() => setRecalc(null), 2600);
   };
@@ -1496,7 +1568,7 @@ function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone }: { tongpei
             </tbody>
           </table>
           <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.9 }}>
-            <div><b>约束校验</b>：份额合计 = 100% ✅ ｜ MOQ 向上取整 ✅ ｜ 同组仓同一供应商 ✅ ｜ 供应商周产能覆盖 ✅</div>
+            <div><b>约束校验</b>：份额合计 = 100% ✅ ｜ MOQ 向上取整 ✅ ｜ 同组仓同一供应商 ✅ ｜ 供应商可供量覆盖 ✅</div>
             <div><b>人工可介入</b>：确认方案直接进入下一步；或输入「调整 湖北一级仓 供应商 椰树供应链D」→ 系统重算并重新校验约束</div>
             <div style={{ color: 'var(--text-muted)' }}>输入依据：各仓需求量、各供应商份额/MOQ/发货地、仓店映射关系、仓组归属关系</div>
           </div>
@@ -1504,9 +1576,9 @@ function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone }: { tongpei
       )}
 
       <div className="card" style={{ borderColor: 'var(--good)', background: 'rgba(34,197,94,0.04)' }}>
-        <div className="card-title" style={{ color: 'var(--good)' }}>📊 偏差率检测 · 三道检测（计算过程监控）<button className="export-btn">📥 导出</button></div>
+        <div className="card-title" style={{ color: 'var(--good)' }}>📊 A 类计算过程检测（计算过程数值检测 · 不推送、不阻断）<button className="export-btn">📥 导出</button></div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.6 }}>
-          备货偏差阈值：10%（分仓计算值 vs 理论需求量，不带系数） ｜ MOQ取整偏差阈值：5% ｜ 安全库存阈值：≥5天<br/>
+          备货偏差阈值：10%（分仓计算值 vs 理论需求量，不带系数） ｜ MOQ取整偏差阈值：5% ｜ 安全库存天数：7 天<br/>
           此页是<b>计算过程的数值检测</b>（在流程内展示，<b>不推送首页</b>）；<b>超阈值不影响进入下一步</b>，系统仅给出数值提醒。上新后 T+1~T+28 的监控指标才走预警中心 / 首页消息。
         </div>
         <table className="data-table warning-table">
@@ -1691,7 +1763,7 @@ function RightStep4Output({ productInfo }: { productInfo: NewProductInfo }) {
       stockCalc: '|66,285 - 66,285| ÷ 66,285 = 0%（含MOQ取整后5.2%）',
       moqDeviation: 0.03, moqThreshold: 5, moqPass: true,
       moqCalc: 'MOQ=500, 原始量39,771 → 取整39,500, 偏差=271÷39,771=0.68%（加权均值0.03%）',
-      safetyExtra: 42920, safetyDaily: 3800, safetyDays: 20.3, safetyThreshold: 5, safetyPass: true,
+      safetyExtra: 42920, safetyDaily: 3800, safetyDays: 20.3, safetyThreshold: 7, safetyPass: true,
       safetyCalc: '统配外42,920 ÷ 日均消耗3,800 = 11.3天（全国加权均值20.3天）',
     },
     {
@@ -1701,7 +1773,7 @@ function RightStep4Output({ productInfo }: { productInfo: NewProductInfo }) {
       stockCalc: '|363,340 - 363,540| ÷ 363,340 = 0.055%（含MOQ取整后8.6%）',
       moqDeviation: 0.055, moqThreshold: 5, moqPass: true,
       moqCalc: 'MOQ=200, 原始量224,554 → 取整224,600, 偏差=46÷224,554=0.02%（加权均值0.055%）',
-      safetyExtra: 224554, safetyDaily: 20800, safetyDays: 17.2, safetyThreshold: 5, safetyPass: true,
+      safetyExtra: 224554, safetyDaily: 20800, safetyDays: 17.2, safetyThreshold: 7, safetyPass: true,
       safetyCalc: '统配外224,554 ÷ 日均消耗20,800 = 10.8天（全国加权均值17.2天）',
     },
     {
@@ -1711,7 +1783,7 @@ function RightStep4Output({ productInfo }: { productInfo: NewProductInfo }) {
       stockCalc: '|138,095 - 138,345| ÷ 138,095 = 0.18%（含MOQ取整后12.1%）',
       moqDeviation: 0.18, moqThreshold: 5, moqPass: true,
       moqCalc: 'MOQ=100, 原始量78,316 → 取整78,400, 偏差=84÷78,316=0.11%（加权均值0.18%）',
-      safetyExtra: 78316, safetyDaily: 10000, safetyDays: 11.8, safetyThreshold: 5, safetyPass: true,
+      safetyExtra: 78316, safetyDaily: 10000, safetyDays: 11.8, safetyThreshold: 7, safetyPass: true,
       safetyCalc: '统配外78,316 ÷ 日均消耗10,000 = 7.8天（全国加权均值11.8天）',
     },
     {
@@ -1721,7 +1793,7 @@ function RightStep4Output({ productInfo }: { productInfo: NewProductInfo }) {
       stockCalc: '|28,585 - 28,655| ÷ 28,585 = 0.24%（含MOQ取整后3.8%）',
       moqDeviation: 0.24, moqThreshold: 5, moqPass: true,
       moqCalc: 'MOQ=200, 原始量28,585 → 取整28,600, 偏差=15÷28,585=0.05%（加权均值0.24%）',
-      safetyExtra: 28585, safetyDaily: 2200, safetyDays: 20.0, safetyThreshold: 5, safetyPass: true,
+      safetyExtra: 28585, safetyDaily: 2200, safetyDays: 20.0, safetyThreshold: 7, safetyPass: true,
       safetyCalc: '统配外28,585 ÷ 日均消耗2,200 = 13.0天（全国加权均值20.0天）',
     },
   ];
@@ -1765,7 +1837,7 @@ function RightStep4Output({ productInfo }: { productInfo: NewProductInfo }) {
       <div className="card" style={{ borderColor: 'var(--warn)', background: 'rgba(245,158,11,0.02)' }}>
         <div className="card-title" style={{ color: 'var(--warn)' }}>📋 预警汇总 — 计算明细<button className="export-btn">📥 导出</button></div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.6 }}>
-          三道检测阈值（汇总自 Step 3 偏差率检测）：备货偏差 ≤10% ｜ MOQ取整偏差 ≤5% ｜ 安全库存 ≥5天
+          A 类检测阈值（汇总自「汇总到仓」页检测区）：备货偏差 ≤10% ｜ MOQ取整偏差 ≤5% ｜ 安全库存 ≥7天
         </div>
 
         {warningDetail.map((m, i) => (
@@ -1836,6 +1908,42 @@ function RightStep4Output({ productInfo }: { productInfo: NewProductInfo }) {
         </p>
       </div>
 
+      {/* 供应限制处理（三场景）——9/23 拍板：只出方案文案 + 表 */}
+      <div className="card" style={{ borderColor: 'var(--accent)' }}>
+        <div className="card-title" style={{ color: 'var(--accent)' }}>⛔ 供应限制处理（安全库存检测后）<button className="export-btn">📥 导出</button></div>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.7 }}>
+          当<b>供应商可供量</b>不足时，按以下三种场景给处理方案（口径依 PRD V7.6：系统不配置「产能」字段，判定依据＝供应商可供量／分货库存）。
+        </div>
+        <table className="data-table wrap-table">
+          <thead>
+            <tr><th>场景</th><th>判断条件</th><th>处理方式</th><th>示例</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td style={{ fontWeight: 600, color: 'var(--good)' }}>A · 够分</td>
+              <td style={{ fontSize: 12 }}>全国可供总量 ≥ 各仓安全库存之和</td>
+              <td style={{ fontSize: 12 }}>识别不足仓与多余仓，从多余仓调给不足仓（<b>调整采购订单，非仓间调拨</b>）</td>
+              <td style={{ fontSize: 12 }}>上海仓可售 12 天 → 调 3 天量给湖北仓（7.1 天）</td>
+            </tr>
+            <tr>
+              <td style={{ fontWeight: 600, color: 'var(--warn)' }}>B · 不够分</td>
+              <td style={{ fontSize: 12 }}>全国可供总量 &lt; 各仓安全库存之和</td>
+              <td style={{ fontSize: 12 }}>按各仓日均消耗比例<b>全国均分</b>，保证每仓安库天数一致</td>
+              <td style={{ fontSize: 12 }}>均分后每仓安全库存天数统一降到 4.3 天</td>
+            </tr>
+            <tr>
+              <td style={{ fontWeight: 600 }}>C · 部分可补</td>
+              <td style={{ fontSize: 12 }}>供应商只能追加一部分可供量</td>
+              <td style={{ fontSize: 12 }}>先补能补的部分，剩余按场景 B 处理</td>
+              <td style={{ fontSize: 12 }}>先补 60%，余量按日均消耗比例均分</td>
+            </tr>
+          </tbody>
+        </table>
+        <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.8 }}>
+          本期交付口径：<b>只输出方案文案 + 表</b>（不含「一键应用调整」等交互确认），与 9/23 拍板一致。
+        </div>
+      </div>
+
       {/* 导出清单 */}
       <div className="card">
         <div className="card-title">📥 导出Excel（6个Sheet）</div>
@@ -1845,7 +1953,7 @@ function RightStep4Output({ productInfo }: { productInfo: NewProductInfo }) {
             <tr><td style={{ fontWeight: 600 }}>Sheet1</td><td>门店明细</td><td className="num">{productInfo.storeCount.toLocaleString()} × 4物料 × W1-W4</td><td style={{ fontSize: 11 }}>逐门店逐物料计算结果</td></tr>
             <tr><td style={{ fontWeight: 600 }}>Sheet2</td><td>仓库汇总</td><td className="num">30+仓库 × 4物料</td><td style={{ fontSize: 11 }}>按仓库汇总统配+统配外</td></tr>
             <tr><td style={{ fontWeight: 600 }}>Sheet3</td><td>供应商分配</td><td className="num">6条</td><td style={{ fontSize: 11 }}>供应商份额+MOQ取整</td></tr>
-            <tr><td style={{ fontWeight: 600 }}>Sheet4</td><td>预警清单</td><td className="num">4物料 × 3项检测</td><td style={{ fontSize: 11 }}>三道检测计算明细</td></tr>
+            <tr><td style={{ fontWeight: 600 }}>Sheet4</td><td>预警清单</td><td className="num">4物料 × 3项检测</td><td style={{ fontSize: 11 }}>A 类检测（备货偏差 / MOQ取整 / 安全库存）计算明细</td></tr>
             <tr><td style={{ fontWeight: 600 }}>Sheet5</td><td>SCM导入模板</td><td className="num">—</td><td style={{ fontSize: 11 }}>可直接导入SCM系统</td></tr>
             <tr><td style={{ fontWeight: 600 }}>Sheet6</td><td>仓级统配对比</td><td className="num">8仓</td><td style={{ fontSize: 11 }}>预测统配 vs 实际统配，异常标记</td></tr>
           </tbody>
