@@ -2,7 +2,13 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <!-- ⚠️ 必须写**相对路径** `favicon.svg`，不要绝对路径（2026-09-24 修）：
+         原来写 `href="/vite.svg"` —— ① public/ 下根本没有 vite.svg（是 favicon.svg）② 绝对路径在 GitHub Pages 上会被解析成
+         站点根 `https://<user>.github.io/vite.svg`（项目页在 /<repo>/ 下）⇒ 线上 favicon 404。
+         相对路径两种环境都对：dev 解析成 /ai-ceo-newproduct-demo/favicon.svg，线上解析成 /<repo>/favicon.svg。
+         ⚠️ 别改成带 base 的绝对路径 —— vite dev 会给 index.html 里的绝对路径**再补一次 base**（见 vite.config.ts 里那段注释），
+         dev 会变成 /base/base/favicon.svg 并静默拿到 index.html。 -->
+    <link rel="icon" type="image/svg+xml" href="favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>AI CEO · 新品分仓备货</title>
   </head>
