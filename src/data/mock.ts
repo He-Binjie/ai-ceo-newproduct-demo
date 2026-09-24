@@ -1,5 +1,5 @@
 // 向磊飞书多维表格模板数据（V4 - 9/9会议修正：多品+预警+统配仓级视图）
-import type { BOMRecord, NewProductInfo, RegionCoefficient, StoreForecast, UnifiedDistribution, WarehouseDistributionCompare, MonitorWarehouseRow, MonitorTrend, TrendPoint, ParamItem } from '../types';
+import type { BOMRecord, NewProductInfo, RegionCoefficient, StoreForecast, UnifiedDistribution, WarehouseDistributionCompare, MonitorSubWhRow, ParamItem } from '../types';
 
 // ===== 新品列表（Step 0 选择用） =====
 export const newProductList = [
@@ -178,6 +178,70 @@ export const mockSystemDataProduct2 = {
   firstMonthDailyCups: 620,
   totalSalesMay: 121169659,
 };
+
+/* ===================== 多品聚合物料清单（Step 2 起的「合并品名」口径） =====================
+ *
+ * 彬节 2026-09-24：「两个新品按 BOM 物料拆分并加和的结果表」—— Step 0 可多选同系列新品，
+ * Step 2 起全链路按**合并品名**聚合（PRD §4.11：多品共用物料只能算总偏差，按系列聚合后统一比对）。
+ *
+ * 所以这张表 = 两个新品 BOM 的并集去重 + 共用物料需求加和：
+ *   安溪铁观音（两品共用）｜ 冷冻生椰乳（两品共用）｜ 莲雾苹果汁（品1）｜ 东方美人乌龙茶-A（品1）｜ 冷冻凤梨汁（品2）
+ * ⇒ 5 种核心物料；**共用物料只出现一行**，其量 = 品1 需求 + 品2 需求。
+ *
+ * 参数（用量 / W1-W4 杯占 / 损耗 / 开封效期 / 备货系数）取**该物料的系列基准值**；
+ * 另一品的需求通过 `demandFactors`（见 types.ts 注释）折算成基准品倍数，逐周进入引擎的 W1-W4。
+ *
+ * 折算数（杯量：品1 首周 609 / 首月 650；品2 首周 580 / 首月 620；备货系数 铁观音 1.0 / 生椰乳 1.15 两品同值）：
+ *   共用物料 factor_n = 1 + (杯量2_n × W2_n) ÷ (杯量1_n × W1_n)
+ *     W1: 1 + (580×0.04)/(609×0.05) = 1.761905
+ *     W2: 1 + (620×0.03)/(650×0.035) = 1.817582
+ *     W3: 1 + (620×0.02)/(650×0.022) = 1.867133
+ *     W4: 1 + (620×0.01)/(650×0.013) = 1.733728
+ *   品2 独有（冷冻凤梨汁）factor_n = 杯量2_n ÷ 杯量1_n
+ *     W1: 580/609 = 0.952381；W2-W4: 620/650 = 0.953846
+ *
+ * ⚠️ 用量（20g/杯 等）**不参与引擎计算** —— 应用率（杯/箱）已经含了「单杯用量 × 损耗」，
+ *    这里是展示字段（供业务方对照 BOM 表），共用物料显示系列主品的值。
+ * ⚠️ 改物料集合/加品时要同步：APPLICATION_RATES（calculator.ts）、MOQ_DEFAULTS + supplierRoot（供应商侧）。
+ */
+export const aggregatedMaterials: BOMRecord[] = [
+  {
+    ...mockBOMRecords[0], // 安溪铁观音（两品共用，量已加和）
+    id: 'agg-001',
+    productName: '铁观音莲雾苹果 + 铁观音凤梨白月光（聚合）',
+    sourceProducts: ['铁观音莲雾苹果', '铁观音凤梨白月光'],
+    demandFactors: [1.761905, 1.817582, 1.867133, 1.733728],
+  } as BOMRecord,
+  {
+    ...mockBOMRecords[1], // 莲雾苹果汁（仅品1）
+    id: 'agg-002',
+    productName: '铁观音莲雾苹果（聚合）',
+    sourceProducts: ['铁观音莲雾苹果'],
+    demandFactors: [1, 1, 1, 1],
+  } as BOMRecord,
+  {
+    ...mockBOMRecords[2], // 冷冻生椰乳（两品共用，量已加和）
+    id: 'agg-003',
+    productName: '铁观音莲雾苹果 + 铁观音凤梨白月光（聚合）',
+    sourceProducts: ['铁观音莲雾苹果', '铁观音凤梨白月光'],
+    demandFactors: [1.761905, 1.817582, 1.867133, 1.733728],
+  } as BOMRecord,
+  {
+    ...mockBOMRecords[3], // 东方美人乌龙茶-A（仅品1）
+    id: 'agg-004',
+    productName: '铁观音莲雾苹果（聚合）',
+    sourceProducts: ['铁观音莲雾苹果'],
+    demandFactors: [1, 1, 1, 1],
+  } as BOMRecord,
+  {
+    // 冷冻凤梨汁（仅品2）—— 参数取品2 BOM，杯量按品2/品1 折算
+    ...mockBOMRecordsProduct2[1],
+    id: 'agg-005',
+    productName: '铁观音凤梨白月光（聚合）',
+    sourceProducts: ['铁观音凤梨白月光'],
+    demandFactors: [0.952381, 0.953846, 0.953846, 0.953846],
+  } as BOMRecord,
+];
 
 // ===== 系统自动获取（非表格读取） =====
 export const mockSystemData = {
@@ -478,19 +542,6 @@ export const supplierRoot: Array<{ merged: string; rows: Array<[string, number]>
 // ================= V7.6 新增（9/22 罗雄会议）：监控看板 / 参数面板 =================
 // ⚠️ 本段全部为**演示态数据（mock）**，不是真实取数结果
 
-function monitorTrendFor(seed: number, baseCups: number, baseShare: number): TrendPoint[] {
-  const start = new Date('2026-09-15');
-  const out: TrendPoint[] = [];
-  for (let d = 1; d <= 30; d++) {
-    const dt = new Date(start.getTime() + (d - 1) * 86400000);
-    const weekend = (d % 7 === 6 || d % 7 === 0) ? 1.18 : 1.0;
-    const cups = Math.round(baseCups * weekend * (1 - 0.004 * (d - 1)) * (1 + 0.03 * Math.sin(d / 1.7 + seed)));
-    const share = Number((baseShare * (1 - 0.012 * (d - 1)) * (1 + 0.05 * Math.sin(d / 1.3 + seed))).toFixed(2));
-    out.push({ day: d, date: `${dt.getMonth() + 1}/${dt.getDate()}`, cups, share });
-  }
-  return out;
-}
-
 /* 「新品监控」仓维度底表 —— **茶姬真实仓清单 24 个**（20 一级仓 + 4 二级仓：北京/海南/新疆/甘青宁）。
    仓名 / 子公司 / 省 取自茶姬门店底表（与 src/data/mock.ts 的 storeBaseData 同源，24 个仓一一对应），
    与参数面板「区域系数 = 24 个子公司」同一口径。
@@ -539,45 +590,51 @@ const MONITOR_WH_BASE: Array<{
   { name: '甘青宁二级仓', sub: '甘青宁子公司', prov: '甘肃省',           stores: 144, dev: 3.7,   whDays: 7.9,  storeDays: 13.4, share: 3.1 },
 ]
 
-export const monitorWarehouses: MonitorWarehouseRow[] = MONITOR_WH_BASE.map(w => {
-  const forecast = Math.round(w.stores * FIRST_WEEK)
-  const actual = Math.round(forecast * (1 + w.dev / 100))
-  return {
-    warehouseName: w.name,
-    warehouseType: w.name.includes('二级') ? '二级仓' : '一级仓',
-    subsidiary: w.sub,
-    province: w.prov,
-    coversStores: w.stores,
-    forecastDailyCups: forecast,
-    actualDailyCups: actual,
-    deviationPct: w.dev,
-    warehouseSellableDays: w.whDays,
-    storeSellableDays: w.storeDays,
-    isDeviationAlert: Math.abs(w.dev) > 20,
-    isStockAlert: w.whDays < 7,
-  }
-})
+/* ============ 「新品监控」看板底表：**二级仓 × 核心物料**（2026-09-24 彬节口径） ============
+ *
+ * 彬节：「要按照二级仓的数据展示，二级仓的数量应该够多，而且是每一种物料都有很多个二级仓，
+ *        我们新品核心物料大概有四五种」。
+ * ⇒ 行 = 核心物料（5 种，见 aggregatedMaterials）× 它落到的所有二级仓；一级仓沿用门店底表的 24 个仓，
+ *    每个仓按库区拆 2 个二级仓（常温库 / 冷藏库）= 48 个二级仓 ⇒ 5 × 24 = 120 行。
+ *
+ * 数字来源（不是随机数）：
+ *   · 备货预测量 = 所属一级仓覆盖门店 × 单店周备货量，单店周量 = 分仓真算的**全国预测量 ÷ 7,188 店 ÷ 4 周**
+ *     （安溪铁观音 35,940 / 莲雾苹果汁 398,505 / 冷冻生椰乳 353,776 / 东方美人乌龙茶-A 57,504 / 冷冻凤梨汁 152,883）。
+ *     ⇒ Σ(24 仓 × 单店量) ≈ 分仓真算的全国量，两处口径同源。
+ *   · 偏差率 = 该仓偏差线（MONITOR_WH_BASE.dev）+ 物料级偏移；可售天数 = 该仓可售天数线 + 物料级偏移。
+ *     ⚠️ 这两个是**上新期监控值（演示态）**——监控要等上新后 T+1~T+28 才有真实出数。
+ */
+const SUB_WH_MATERIALS: Array<{
+  name: string; unit: string; area: string; unitWeekly: number; devOffset: number; daysOffset: number;
+}> = [
+  { name: '安溪铁观音',       unit: '箱', area: '常温库', unitWeekly: 1.25,   devOffset:  1.6, daysOffset:  0.6 },
+  { name: '莲雾苹果汁',       unit: '箱', area: '常温库', unitWeekly: 13.8618, devOffset: -2.4, daysOffset: -0.5 },
+  { name: '冷冻生椰乳',       unit: '瓶', area: '冷藏库', unitWeekly: 12.3043, devOffset:  3.1, daysOffset: -1.1 },
+  { name: '东方美人乌龙茶-A', unit: '箱', area: '常温库', unitWeekly: 2.0003,  devOffset: -4.2, daysOffset:  0.9 },
+  { name: '冷冻凤梨汁',       unit: '箱', area: '冷藏库', unitWeekly: 5.3175,  devOffset:  2.2, daysOffset: -0.7 },
+];
 
-export const monitorNational: MonitorWarehouseRow = {
-  warehouseName: '全国',
-  warehouseType: '一级仓',
-  coversStores: 7188,
-  forecastDailyCups: 7188 * FIRST_WEEK,
-  actualDailyCups: Math.round(7188 * FIRST_WEEK * 1.038),
-  deviationPct: 3.8,
-  warehouseSellableDays: 8.9,
-  storeSellableDays: 14.6,
-  isDeviationAlert: false,
-  isStockAlert: false,
-};
-
-export const monitorTrend: MonitorTrend = {
-  national: monitorTrendFor(0.4, 7188 * FIRST_WEEK, 6.8),
-  byWarehouse: MONITOR_WH_BASE.reduce((acc, w) => {
-    acc[w.name] = monitorTrendFor(0.4 + w.share / 10, w.stores * FIRST_WEEK, w.share)
-    return acc;
-  }, {} as Record<string, TrendPoint[]>),
-};
+export const monitorSubWarehouses: MonitorSubWhRow[] = MONITOR_WH_BASE.flatMap(w =>
+  SUB_WH_MATERIALS.map(m => {
+    const forecastQty = Math.round(w.stores * m.unitWeekly);
+    const deviationPct = Math.round((w.dev + m.devOffset) * 10) / 10;
+    const sellableDays = Math.round((w.whDays + m.daysOffset) * 10) / 10;
+    return {
+      wh1: w.name,
+      wh2: `${w.name}-${m.area}`,
+      subsidiary: w.sub,
+      material: m.name,
+      unit: m.unit,
+      coversStores: w.stores,
+      forecastQty,
+      actualQty: Math.round(forecastQty * (1 + deviationPct / 100)),
+      deviationPct,
+      sellableDays,
+      isDeviationAlert: Math.abs(deviationPct) > 20,
+      isStockAlert: sellableDays < 7,
+    };
+  })
+);
 
 // 参数面板：V7.6 规则 = 所有参数都支持页面直接改；底表里也有的可两处改（底表改 15–20 分钟后生效）；计算以页面当前值为准
 export const paramList: ParamItem[] = [

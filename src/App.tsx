@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import './styles.css';
-import type { ChatMessage, NewProductInfo, BOMMaterial, RegionCoefficient, ConfirmAction, MonitorWarehouseRow, ParamItem } from './types';
-import { mockProduct, mockMaterials, mockRegionCoefficients, historicalProducts, historicalProductsDetail, newProductList, mockBOMRecordsProduct2, mockSystemDataProduct2, mockWarehouseDistributionCompare, monitorNational, monitorWarehouses, monitorTrend, paramList, supplierRoot } from './data/mock';
+import type { ChatMessage, NewProductInfo, BOMMaterial, RegionCoefficient, ConfirmAction, ParamItem } from './types';
+import { mockProduct, mockMaterials, aggregatedMaterials, mockRegionCoefficients, historicalProducts, historicalProductsDetail, newProductList, mockBOMRecordsProduct2, mockSystemDataProduct2, mockWarehouseDistributionCompare, paramList, supplierRoot } from './data/mock';
 import { parseIntent } from './engine/nlu';
 import { NARRATIVE, GUIDE_STEPS, STEP_MAPPING } from './data/narrative';
 import { EditableNumber, ChangeLogPanel, ToastHost, usePageValue, useValueVersion, getPageValue, setPageValue, setPageValueAll, setPageValueSmart, addChange } from './components/InlineEdit';
@@ -12,9 +12,11 @@ import { weekMinQty } from './engine/calculator';
 // 简化为5步
 const STEP_LABELS = ['选择新品', '预测杯量', '系数修正+BOM拆解', '汇总到仓+供应商', '结果输出'];
 
-// V2.16：右侧 Tab 显式定义（原由 STEP_LABELS 推导），新增「监控看板」（首页默认视图）与「参数面板」
+// V2.16：右侧 Tab 显式定义（原由 STEP_LABELS 推导），新增「监控入口」（首页默认视图）与「参数面板」
 const RIGHT_TABS: Array<{ step: Step; label: string; icon?: string; always?: boolean }> = [
-  { step: 0, label: '监控看板', icon: 'chart', always: true },
+  // 2026-09-24：Tab 0 原为「监控看板」，首页监控数据已按 PRD V7.8 全部删除（看板载体＝智能问数看板），
+  // 本 Tab 只剩一张指路卡 ⇒ 标签改为「监控入口」。
+  { step: 0, label: '监控入口', icon: 'chart', always: true },
   { step: 1, label: '预测杯量' },
   { step: 2, label: '系数修正+BOM拆解' },
   { step: 3, label: '汇总到仓+供应商' },
@@ -550,7 +552,7 @@ function App() {
             holder 由 React 渲染，her 的节点在 useEffect 里被 appendChild 移动进来（节点身份不变）。 */}
         <div id="slot-wenshu-header-center" />
         <div className="user-info">
-          <span className="mock-badge" title="分仓计算链路（杯量 → 物料量 → 汇总到仓 → 偏差率 → 检测）已按 PRD 公式真算，参数改动即时联动；底表与上新监控看板仍为 mock 数据">底表 mock · 分仓链路已真算</span>
+          <span className="mock-badge" title="分仓计算链路（杯量 → 物料量 → 汇总到仓 → 偏差率 → 检测）已按 PRD 公式真算，参数改动即时联动；底表仍为 mock 数据。首页监控数据已按 PRD V7.8 删除（6 项监控指标的看板载体＝智能问数看板 → 新品监控，粒度＝二级仓 × 核心物料）">底表 mock · 分仓链路已真算</span>
           <button className={`guide-btn ${showGuide ? 'active' : ''}`} onClick={() => setShowGuide(!showGuide)}>
             {showGuide ? '收起讲解' : '演示讲解'}
           </button>
@@ -813,11 +815,11 @@ function App() {
               </div>
               {/* Tab Content */}
               <div className="right-tab-content">
-                {rightTab === 0 && <RightMonitorBoard />}
+                {rightTab === 0 && <MonitorMovedNotice compact />}
                 {rightTab === 5 && <RightParamPanel />}
                 {rightTab === 1 && <RightStep1CupForecast productInfo={productInfo} materials={materials} selectedProduct={selectedProduct} activeBOMTab={activeBOMTab} setActiveBOMTab={setActiveBOMTab} />}
-                {rightTab === 2 && <RightStep2CoefficientsAndBOM regions={regions} flooredCount={flooredCount} materials={materials} productInfo={productInfo} selectedHistoricalProducts={selectedHistoricalProducts} setSelectedHistoricalProducts={setSelectedHistoricalProducts} selectedProduct={selectedProduct} />}
-                {rightTab === 3 && <RightStep3WarehouseAndWarnings tongpeiDone={tongpeiDone} supplierDone={supplierDone} />}
+                {rightTab === 2 && <RightStep2CoefficientsAndBOM regions={regions} flooredCount={flooredCount} materials={aggregatedMaterials} productInfo={productInfo} selectedHistoricalProducts={selectedHistoricalProducts} setSelectedHistoricalProducts={setSelectedHistoricalProducts} selectedProduct={selectedProduct} />}
+                {rightTab === 3 && <RightStep3WarehouseAndWarnings tongpeiDone={tongpeiDone} supplierDone={supplierDone} onTongpeiArrived={() => setTongpeiDone(true)} />}
                 {rightTab === 4 && <RightStep4Output productInfo={productInfo} />}
               </div>
             </>
@@ -859,16 +861,11 @@ function formatMessage(text: string) {
 // ===== Right Panel Components =====
 
 function RightEmptyState() {
-  // V2.16：新品分仓「首页」= 上新期间监控看板（9/22 会议：监控项都放一个看板里）
+  // V2.16：新品分仓「首页」曾＝上新期间监控看板；
+  // 2026-09-24 按 PRD V7.8 §5.4 把首页监控数据全部删除（看板载体＝智能问数看板）→ 只剩一张指路卡
   return (
     <div>
-      <RightMonitorBoard />
-      <div className="card" style={{ background: 'var(--accent-bg)', borderColor: 'var(--accent)' }}>
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.9 }}>
-          ← 在左侧对话中选择新品即可开始分仓备货计算；上方为**新品分仓首页 · 上新期间监控看板**（随时可点顶部 Tab 回看）。<br/>
-          分仓计算结果与监控看板是两套东西：看板是上新后每天看的，分仓计算是上新前跑一次的。
-        </div>
-      </div>
+      <MonitorMovedNotice />
     </div>
   );
 }
@@ -922,133 +919,33 @@ function GuidePanel({ currentStep }: { currentStep: number }) {
   );
 }
 
-/* ===================== V2.16 监控看板（新品分仓首页） ===================== */
-function RightMonitorBoard() {
-  useValueVersion(); // 订阅参数值变化（三个 N 可在本页直接点改）
-  const alertN = getPageValue('预警阈值天数', '全局', 7);
-  const [scope, setScope] = useState<string>('national');
-  const isNational = scope === 'national';
-  const row: MonitorWarehouseRow = isNational ? monitorNational : (monitorWarehouses.find(w => w.warehouseName === scope) || monitorNational);
-  const trend = isNational ? monitorTrend.national : (monitorTrend.byWarehouse[scope] || monitorTrend.national);
-  const cupsMax = Math.max(...trend.map(p => p.cups));
-  const cupsMin = Math.min(...trend.map(p => p.cups));
-  const shareMax = Math.max(...trend.map(p => p.share));
-  const shareMin = Math.min(...trend.map(p => p.share));
-  const line = (vals: number[], max: number, min: number) =>
-    vals.map((v, i) => `${i === 0 ? 'M' : 'L'}${(i / (vals.length - 1)) * 620},${88 - ((v - min) / Math.max(1, max - min)) * 74}`).join(' ');
-  const devColor = (v: number) => (Math.abs(v) > 20 ? 'var(--danger)' : 'var(--good)');
-  const rowAlerts = isNational ? monitorWarehouses : [row];
-  const devAlerts = rowAlerts.filter(r => r.isDeviationAlert);
-  const stockAlerts = rowAlerts.filter(r => r.isStockAlert);
-
+/* ====== 首页「上新期间监控看板」→ 2026-09-24 已删除（PRD V7.8 §5.4） ======
+ * 彬节：首页的仓库监控数据**全部删除** ——「我们已经在看板中有了，这一条 PRD 已经更新了，demo 中需要更新」。
+ * PRD V7.8 §5.4：6 项监控指标的**看板载体＝智能问数看板**，分仓 PRD 只定义口径与算法、不自建看板页面/入口。
+ * 因此原先这里的「3 个 N 输入 / 仓 chip / 6 张 KPI 卡 / 30 天趋势图 / 仓明细表 / 预警卡」全部移除，
+ * 只留一张指路卡（口径照 PRD 写死，避免演示时被问「数据哪来的」）。
+ * 监控数据由 public/wenshu/np-monitor.js 注册在问数壳里的「新品监控」看板承载（粒度＝二级仓 × 核心物料）。
+ */
+function MonitorMovedNotice({ compact }: { compact?: boolean }) {
   return (
-    <div>
-      <div className="card" style={{ borderColor: 'var(--accent)' }}>
-        <div className="card-title" style={{ color: 'var(--accent)' }}><Icon n="chart" style={{ marginRight: 6, color: 'inherit' }} />上新期间监控看板（首页 · 点数字可直接改）<button className="export-btn"><Icon n="download" size={12} /> 导出</button></div>
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.7, marginBottom: 10 }}>
-          上新日起 <b>30 天</b>（上新期 3 个月的也只看第一个月）
-          {' ｜ '}滚动统计：最近 <EditableNumber value={7} rule={{ min: 1, max: 30, int: true, suffix: '天' }} param="售卖天数 N" granularity="全局" effect="D②「仓实际日均杯量」分母" /> 、不含当天
-          {' ｜ '}订货天数 N：<EditableNumber value={7} rule={{ min: 1, max: 30, int: true, suffix: '天' }} param="订货天数 N" granularity="全局" effect="D⑤「仓库可售天数」分母" />
-          {' ｜ '}预警阈值 N：<EditableNumber value={7} rule={{ min: 1, max: 30, int: true, suffix: '天' }} param="预警阈值天数" granularity="全局" effect="C②库存预警触发线" />
-          <details className="caliber-note">
-            <summary>口径说明（3 个 N 别混 · 其余为监控项）</summary>
-            <div>
-              • <b>售卖天数 N</b> → 「仓实际日均杯量」分母（最近 N 天、不含当天）<br/>
-              • <b>订货天数 N</b> → 「仓库可售天数」分母（仓物料订货日均 = 订货量 ÷ N 天，数据源订货助手）<br/>
-              • <b>预警阈值 N</b> → 库存预警触发线（仓库可售天数 &lt; N 天）<br/>
-              • <b>预警只有 2 条</b>：① 销量偏差绝对值 &gt; 20%（仓维度 + 全国维度）② 仓库可售天数 &lt; N 天；其余为<b>计算过程监控项</b>，不推送。
-            </div>
-          </details>
-        </div>
-        <div className="chips-row" style={{ marginBottom: 10 }}>
-          <button className={`chip-btn ${isNational ? 'chip-selected' : ''}`} onClick={() => setScope('national')}>全国</button>
-          {monitorWarehouses.map(w => (
-            <button key={w.warehouseName} className={`chip-btn ${scope === w.warehouseName ? 'chip-selected' : ''}`}
-              onClick={() => setScope(w.warehouseName)}>
-              {w.warehouseName}{(w.isDeviationAlert || w.isStockAlert) && <span className="chip-dot" title={w.isDeviationAlert ? '销量偏差预警' : '库存预警'} />}
-            </button>
-          ))}
-        </div>
-
-        <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
-          <div className="kpi-card"><div className="kpi-label" title="口径：仓维度上新预测总量 ÷ 28（预测基准线）">仓备货预测日均杯量</div><div className="kpi-value">{row.forecastDailyCups.toLocaleString()}<span className="kpi-unit">杯/天</span></div></div>
-          <div className="kpi-card"><div className="kpi-label" title="口径：仓对应门店的成品销售杯量 ÷ 售卖天数 N（最近 N 天、不含当天，默认 7）">仓实际日均杯量</div><div className="kpi-value">{row.actualDailyCups.toLocaleString()}<span className="kpi-unit">杯/天</span></div></div>
-          <div className="kpi-card" style={{ borderColor: Math.abs(row.deviationPct) > 20 ? 'var(--danger)' : undefined }}>
-            <div className="kpi-label" title="口径：（仓实际日均杯量 − 仓备货预测日均杯量）÷ 仓备货预测日均杯量 × 100%；|偏差| > 20% 触发预警">偏差率{isNational ? '（全国）' : '（仓）'}</div>
-            <div className="kpi-value" style={{ color: devColor(row.deviationPct) }}>{row.deviationPct > 0 ? '+' : ''}{row.deviationPct}<span className="kpi-unit">%</span></div>
-          </div>
-          <div className="kpi-card" style={{ borderColor: row.isStockAlert ? 'var(--danger)' : undefined }}>
-            <div className="kpi-label" title="口径：物料可用库存 ÷ 仓物料订货日均（订货量 ÷ 订货天数 N；数据源＝订货助手）">仓库可售天数</div>
-            <div className="kpi-value" style={{ color: row.isStockAlert ? 'var(--danger)' : undefined }}>{row.warehouseSellableDays}<span className="kpi-unit">天</span></div>
-          </div>
-          <div className="kpi-card"><div className="kpi-label" title="口径：（仓库可用库存 + 门店库存 + 门店在途）÷ 门店成品物料销量（成品销量 × BOM）；仅展示、不监控">仓预计门店可售天数</div><div className="kpi-value">{row.storeSellableDays}<span className="kpi-unit">天</span></div></div>
-          <div className="kpi-card"><div className="kpi-label" title="该仓覆盖的在营门店数（辅助信息，非 PRD 六项监控指标）">覆盖门店</div><div className="kpi-value">{row.coversStores.toLocaleString()}<span className="kpi-unit">家</span></div></div>
-        </div>
-
-        <div className="card" style={{ marginTop: 12 }}>
-          <div className="card-title"><Icon n="trend" style={{ marginRight: 6, color: 'inherit' }} />每日杯量趋势 / 每日占比趋势（{isNational ? '全国' : scope}，上新日起 30 天）</div>
-          <div style={{ overflowX: 'auto' }}>
-            <svg viewBox="0 0 640 110" style={{ width: '100%', minWidth: 560, height: 120 }}>
-              {[0, 1, 2, 3].map(i => (
-                <line key={i} x1="0" y1={8 + i * 24} x2="620" y2={8 + i * 24} stroke="#e8f4fa" strokeWidth="1" />
-              ))}
-              <path d={line(trend.map(p => p.cups), cupsMax, cupsMin)} fill="none" stroke="var(--accent)" strokeWidth="2" />
-              <path d={line(trend.map(p => p.share), shareMax, shareMin)} fill="none" stroke="var(--purple)" strokeWidth="2" strokeDasharray="5 4" />
-            </svg>
-          </div>
-          <div className="trend-legend">
-            <span><b style={{ color: 'var(--accent)' }}>—</b> 每日杯量（{Math.min(...trend.map(p => p.cups)).toLocaleString()} ~ {Math.max(...trend.map(p => p.cups)).toLocaleString()}）</span>
-            <span><b style={{ color: 'var(--purple)' }}>---</b> 每日占比（{Math.min(...trend.map(p => p.share)).toFixed(2)}% ~ {Math.max(...trend.map(p => p.share)).toFixed(2)}%）</span>
-            <span>占比趋势更关键：周末总杯量大，会掩盖杯量下降</span>
-          </div>
-          <table className="data-table table-fit" style={{ marginTop: 8 }}>
-            <thead><tr><th>上新日</th>{trend.filter((_, i) => i % 5 === 0).map(p => <th key={p.day} className="num">{p.date}</th>)}</tr></thead>
-            <tbody>
-              <tr><td>每日杯量</td>{trend.filter((_, i) => i % 5 === 0).map(p => <td key={p.day} className="num">{p.cups.toLocaleString()}</td>)}</tr>
-              <tr><td>每日占比</td>{trend.filter((_, i) => i % 5 === 0).map(p => <td key={p.day} className="num">{p.share.toFixed(2)}%</td>)}</tr>
-            </tbody>
-          </table>
-          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}><Icon n="alert" size={12} /> 本看板数据为<b>演示态（mock）</b>，非真实取数结果。</div>
-        </div>
-
-        {!isNational && (
-          <div className="card" style={{ marginTop: 12, borderColor: 'var(--border-main)' }}>
-            <div className="card-title"><Icon n="list" style={{ marginRight: 6, color: 'inherit' }} />全部 8 仓监控明细（预警项已高亮）</div>
-            <div style={{ overflowX: 'auto' }}>
-            <table className="data-table wrap-table">
-              <thead><tr><th style={{ width: 92 }}>仓</th><th className="num">覆盖门店</th><th className="num">备货预测日均</th><th className="num">实际日均</th><th className="num">偏差率</th><th className="num">仓库可售</th><th className="num">门店可售</th><th style={{ width: 76 }}>预警</th></tr></thead>
-              <tbody>
-                {monitorWarehouses.map(w => (
-                  <tr key={w.warehouseName}>
-                    <td style={{ fontWeight: 600 }}>{w.warehouseName}</td>
-                    <td className="num">{w.coversStores.toLocaleString()}</td>
-                    <td className="num">{w.forecastDailyCups.toLocaleString()}</td>
-                    <td className="num">{w.actualDailyCups.toLocaleString()}</td>
-                    <td className="num" style={{ color: devColor(w.deviationPct) }}>{w.deviationPct > 0 ? '+' : ''}{w.deviationPct}%<span className={`dot ${w.isDeviationAlert ? 'dot-fail' : 'dot-pass'}`} title={w.isDeviationAlert ? '销量偏差预警' : '未超阈值'} /></td>
-                    <td className="num" style={{ color: w.isStockAlert ? 'var(--danger)' : undefined }}>{w.warehouseSellableDays}天<span className={`dot ${w.isStockAlert ? 'dot-fail' : 'dot-pass'}`} title={w.isStockAlert ? '库存预警' : '未超阈值'} /></td>
-                    <td className="num">{w.storeSellableDays}天</td>
-                    <td style={{ fontSize: 11 }}>
-                      {w.isDeviationAlert && <span style={{ color: 'var(--danger)' }}>销量偏差预警 </span>}
-                      {w.isStockAlert && <span style={{ color: 'var(--danger)' }}>库存预警</span>}
-                      {!w.isDeviationAlert && !w.isStockAlert && <span style={{ color: 'var(--good)' }}>未触发</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
-          </div>
-        )}
-
-        <div className="card" style={{ marginTop: 12, borderColor: 'var(--warn)', background: 'rgba(245,158,11,0.04)' }}>
-          <div className="card-title" style={{ color: 'var(--warn)' }}><Icon n="bell" style={{ marginRight: 6, color: 'inherit' }} />预警（飞书消息推送，只有 2 条）</div>
-          <div style={{ fontSize: 12, lineHeight: 1.9 }}>
-            <div>① <b>销量偏差预警</b>（|偏差| &gt; 20%，仓维度 + 全国维度）：当前命中 <b style={{ color: 'var(--danger)' }}>{devAlerts.length}</b> 项 {devAlerts.length > 0 && <span style={{ color: 'var(--text-muted)' }}>（{devAlerts.map(d => `${d.warehouseName} ${d.deviationPct > 0 ? '+' : ''}${d.deviationPct}%`).join('、')}）</span>}</div>
-            <div>② <b>库存预警</b>（仓库可售天数 &lt; N 天，当前 N = {alertN}）：当前命中 <b style={{ color: 'var(--danger)' }}>{stockAlerts.length}</b> 项 {stockAlerts.length > 0 && <span style={{ color: 'var(--text-muted)' }}>（{stockAlerts.map(d => `${d.warehouseName} ${d.warehouseSellableDays}天`).join('、')}）</span>}</div>
-            <div style={{ color: 'var(--text-muted)' }}>推送形式：飞书富文本 + 明细 + Excel 附件 + 自定义通知人；<b>监控项不推送</b>，进本看板查看。</div>
-          </div>
-        </div>
+    <div className="card" style={{ background: 'var(--accent-bg)', borderColor: 'var(--accent)' }}>
+      <div className="card-title" style={{ color: 'var(--accent)' }}>
+        <Icon n="chart" style={{ marginRight: 6, color: 'inherit' }} />监控看板已融合到「智能问数」看板
       </div>
+      <div style={{ fontSize: 13, lineHeight: 1.95 }}>
+        这块原本自建的上新期间仓库监控看板（6 张 KPI + 30 天趋势 + 仓明细）<b>已按 PRD V7.8 §5.4 删除</b>：
+        6 项监控指标（仓备货预测日均杯量 / 仓实际日均杯量 / 仓偏差率·全国偏差率 / 趋势 / 仓库可售天数 /
+        仓预计门店可售天数）的<b>看板载体＝智能问数看板</b>，这里不再自建页面与入口。<br />
+        👉 看数据走：<b>技能 → 智能问数 → 看板 → 新品监控</b>（粒度＝二级仓 × 核心物料：48 个二级仓 × 5 种物料 = 120 行）。<br />
+        👉 分仓流程只保留<b>2 条预警</b>（PRD V7.8 §5.4）：① 销量偏差 |偏差| &gt; 20%（仓 + 全国）
+        ② 仓库可售天数 &lt; 7 天 —— 触发走<b>飞书消息</b>推送；数值 N 页面不可改（后端配置可改）。
+      </div>
+      {!compact && (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 10, lineHeight: 1.85 }}>
+          ← 在左侧对话里选新品即可开始分仓备货计算。监控与分仓是两套东西：监控是上新后每天在问数看板看，
+          分仓计算是上新前跑一次（本页第 1–4 步）。
+        </div>
+      )}
     </div>
   );
 }
@@ -1515,43 +1412,38 @@ function RightStep2CoefficientsAndBOM({ regions, materials, productInfo, selecte
         </div>
       </div>
 
-      {/* BOM物料清单 */}
+      {/* BOM物料清单 —— 两个新品按 BOM 拆分并加和后的**聚合结果**（2026-09-24 彬节：
+          「下面那个两个新品按照 bom 物料拆分并加和的结果表 BOM 物料清单，开封有效天数等后面的字段都删除，
+            仅展示聚合后的结果」）⇒ 尾部字段（开封效期 / 备货系数 / 损耗率 / W1-W4 杯占）全部移除：
+          它们是**品维度**的参数（两品取值不同），放在聚合表里会误导；改参数走 Step 1 的分品 BOM 表。 */}
       <div className="card">
-        <div className="card-title"><Icon n="box" style={{ marginRight: 6, color: 'inherit' }} />BOM物料清单（{materials.filter(m => m.selected).length}种核心物料）<button className="export-btn"><Icon n="download" size={12} /> 导出</button></div>
-        <div className="data-source-tag">数据来源：飞书多维表格「新品BOM」表</div>
-        {selectedProduct.length > 1 && (
-          <div style={{ fontSize: 12, color: 'var(--warn)', marginBottom: 8, padding: '6px 10px', background: 'rgba(245,158,11,0.06)', borderRadius: 6, lineHeight: 1.6 }}>
-            <Icon n="alert" size={12} /> 以下物料由 {selectedProduct.map(id => `[${newProductList.find(p => p.id === id)?.name || id}]`).join(' ')} {selectedProduct.length}个新品聚合计算，共用物料已合并
-          </div>
-        )}
+        <div className="card-title"><Icon n="box" style={{ marginRight: 6, color: 'inherit' }} />BOM物料清单 · 聚合结果（{aggregatedMaterials.length}种合并品名）<button className="export-btn"><Icon n="download" size={12} /> 导出</button></div>
+        <div className="data-source-tag">数据来源：飞书多维表格「新品BOM」表（两个新品的物料按合并品名聚合）</div>
+        <div style={{ fontSize: 12, color: 'var(--accent)', marginBottom: 8, padding: '6px 10px', background: 'rgba(37,99,235,0.06)', borderRadius: 6, lineHeight: 1.7 }}>
+          <Icon n="link" size={12} /> 聚合范围：{selectedProduct.map(id => `[${newProductList.find(p => p.id === id)?.name || id}]`).join(' ')}
+          {selectedProduct.length > 1 ? ` ${selectedProduct.length} 个新品` : ''} —— 按 BOM 拆分后<b>按合并品名加和</b>：共用物料只占一行、需求量＝各品之和（PRD §4.11 多品共用物料按系列聚合统一计算）。
+          物料参数（开封效期 / 备货系数 / 损耗率 / W1-W4 杯占比）按<b>品</b>维护，见第 1 步「预测杯量」里的分品 BOM 参数表。
+        </div>
         <table className="data-table table-fit">
-          <thead><tr><th>合并品名</th><th>原材料名称</th><th>原材料编码</th><th>规格型号</th><th>单位</th><th className="num">单位用量</th><th>用量单位</th><th className="num">开封效期</th><th className="num">备货系数</th><th className="num">损耗率</th><th className="num">W1杯占</th><th className="num">W2杯占</th><th className="num">W3杯占</th><th className="num">W4杯占</th></tr></thead>
+          <thead><tr><th>合并品名</th><th>原材料名称</th><th>原材料编码</th><th>规格型号</th><th>单位</th><th className="num">单位用量</th><th>用量单位</th></tr></thead>
           <tbody>
-            {materials.map(m => {
-              const isShared = selectedProduct.length > 1 && mockBOMRecordsProduct2.some(p2 => p2.materialCode === m.materialCode);
+            {aggregatedMaterials.map(m => {
+              const isShared = (m.sourceProducts?.length ?? 0) > 1;
               return (
-              <tr key={m.id} style={{ opacity: m.selected ? 1 : 0.5 }}>
-                <td style={{ fontWeight: 600, color: 'var(--accent)' }}>{m.mergedProductName || m.materialName}</td>
-                <td style={{ fontWeight: 600 }}>{m.materialName}{isShared && <span style={{ marginLeft: 4, fontSize: 11, color: 'var(--accent)' }}><Icon n="link" size={12} /> 共用</span>}</td>
-                <td style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{m.materialCode || <span style={{ color: 'var(--warn)' }}><Icon n="alert" size={12} /> 空</span>}</td>
-                <td style={{ fontSize: 11 }}>{m.spec}</td>
-                <td>{m.unit}</td>
-                <td className="num">{m.unitUsage}</td>
-                <td>{m.usageUnit}</td>
-                <td className="num">
-                  <EditableNumber value={m.shelfLifeDays} rule={{ min: 1, max: 30, int: true, suffix: '天' }} param="开封效期" granularity={m.materialName} effect="Step ⑤–⑧" />
-                </td>
-                <td className="num">
-                  <EditableNumber value={m.stockCoefficient} rule={{ min: 0.1, max: 5, decimals: 2 }} param="备货系数" granularity={m.materialName} effect="Step ④–⑧" />
-                </td>
-                <td className="num">
-                  <EditableNumber value={m.lossRate * 100} rule={{ min: 0, max: 50, suffix: '%' }} param="损耗率" granularity={m.materialName} effect="应用率 → Step ④–⑧" />
-                </td>
-                <td className="num"><EditableNumber value={m.cupRatioW1} rule={{ min: 0, max: 1, decimals: 4 }} param="W1 杯占比" granularity={`${m.materialName}（成品维度）`} effect="Step ④–⑧" syncAll /></td>
-                <td className="num"><EditableNumber value={m.cupRatioW2} rule={{ min: 0, max: 1, decimals: 4 }} param="W2 杯占比" granularity={`${m.materialName}（成品维度）`} effect="Step ④–⑧" syncAll /></td>
-                <td className="num"><EditableNumber value={m.cupRatioW3} rule={{ min: 0, max: 1, decimals: 4 }} param="W3 杯占比" granularity={`${m.materialName}（成品维度）`} effect="Step ④–⑧" syncAll /></td>
-                <td className="num"><EditableNumber value={m.cupRatioW4} rule={{ min: 0, max: 1, decimals: 4 }} param="W4 杯占比" granularity={`${m.materialName}（成品维度）`} effect="Step ④–⑧" syncAll /></td>
-              </tr>
+                <tr key={m.id}>
+                  <td style={{ fontWeight: 600, color: 'var(--accent)' }}>{m.mergedProductName || m.materialName}</td>
+                  <td style={{ fontWeight: 600 }}>
+                    {m.materialName}
+                    {isShared
+                      ? <span style={{ marginLeft: 4, fontSize: 11, color: 'var(--accent)' }}><Icon n="link" size={12} /> 两品共用·已加和</span>
+                      : <span style={{ marginLeft: 4, fontSize: 11, color: 'var(--text-muted)' }}>（{m.sourceProducts?.[0] ?? '—'}）</span>}
+                  </td>
+                  <td style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{m.materialCode || <span style={{ color: 'var(--warn)' }}><Icon n="alert" size={12} /> 空</span>}</td>
+                  <td style={{ fontSize: 11 }}>{m.spec}</td>
+                  <td>{m.unit}</td>
+                  <td className="num">{m.unitUsage}</td>
+                  <td>{m.usageUnit}</td>
+                </tr>
               );
             })}
           </tbody>
@@ -1768,8 +1660,52 @@ function SupplierShareCheck() {
   );
 }
 
-function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone }: { tongpeiDone: boolean; supplierDone: boolean }) {
+function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone, onTongpeiArrived }: { tongpeiDone: boolean; supplierDone: boolean; onTongpeiArrived: () => void }) {
   const safetyDays = usePageValue('安全库存天数', '全局', 7);
+  /* ===== 统配数据（T-30 出数）上传 =====
+   * PRD §4.2.4：「统配量＝门店提报的真实需求（T-30 出数）」；① 数据来源写明**过渡期手动上传 Excel**。
+   * 所以这张卡上给业务方一个上传口：选文件 → 用她 index.html 里 vendor 的 xlsx **本地解析**
+   * （与她的报表同一套解析库，不新增依赖）→ 显示文件名/大小/行数/列 + 前 3 行预览 →
+   * 标记「统配数据已到」并自动展开统配比对。
+   * ⚠️ 比对结果仍按内置样例（T-30 出数本身是外部数据）；上传解析是真解析，不假报行数。 */
+  const [upload, setUpload] = useState<{ name: string; size: number; rows: number; cols: string[]; preview: string[][]; note: string } | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  type XlsxLike = {
+    read: (b: ArrayBuffer, o: { type: string }) => { SheetNames: string[]; Sheets: Record<string, unknown> };
+    utils: { sheet_to_json: (ws: unknown, o: { header: number; raw: boolean; defval: string }) => unknown[][] };
+  };
+  const handleUpload = async (e: { target: HTMLInputElement }) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    setUploading(true);
+    const info = { name: f.name, size: f.size, rows: 0, cols: [] as string[], preview: [] as string[][], note: '' };
+    try {
+      const XLSX = (window as unknown as { XLSX?: XlsxLike }).XLSX;
+      if (XLSX) {
+        const wb = XLSX.read(await f.arrayBuffer(), { type: 'array' });
+        const aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: false, defval: '' });
+        info.cols = (aoa[0] || []).map(c => String(c));
+        info.rows = Math.max(0, aoa.length - 1);
+        info.preview = aoa.slice(1, 4).map(r => (r || []).map(c => String(c)));
+        info.note = '已本地解析（她的 vendor/xlsx，与她的报表同一套解析库）';
+      } else if (/\.csv$/i.test(f.name)) {
+        const lines = (await f.text()).split(/\r?\n/).filter(l => l.trim());
+        info.cols = (lines[0] || '').split(',');
+        info.rows = Math.max(0, lines.length - 1);
+        info.preview = lines.slice(1, 4).map(l => l.split(','));
+        info.note = '已本地解析（CSV）';
+      } else {
+        info.note = '页面未加载到 xlsx 解析库（她的 vendor 脚本没起来）—— 已记录文件，比对仍用内置样例数据';
+      }
+    } catch (err) {
+      info.note = '解析失败：' + String(err);
+    }
+    setUpload(info);
+    setUploading(false);
+    onTongpeiArrived(); /* 统配数据已到 → 展开统配比对 */
+    e.target.value = ''; /* 允许重复上传同一文件 */
+  };
   // 档位 2：A 类计算过程检测全部来自引擎（§4.11 备货偏差 10% / §4.12 MOQ 取整 5% / §4.15 安库 N 天）
   const { calc } = useCalc();
   // 异常统配门店明细（12家）
@@ -2018,7 +1954,48 @@ function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone }: { tongpei
         </table>
       </div>
 
-      {/* 统配比对 */}
+      {/* 统配数据（T-30 出数）—— 业务方可**上传 Excel**（PRD §4.2.4：过渡期手动上传） */}
+      <div className="card" style={{ borderColor: 'var(--warn)', background: 'rgba(245,158,11,0.04)' }}>
+        <div className="card-title" style={{ color: 'var(--warn)' }}>
+          <Icon n="clock" style={{ marginRight: 6, color: 'inherit' }} />统配数据（T-30出数）
+          {tongpeiDone && <span className="status-tag status-pass" style={{ marginLeft: 8 }}><span className="dot dot-pass" />已到达</span>}
+        </div>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.8, marginBottom: 10 }}>
+          {tongpeiDone
+            ? <>统配数据已到达（业务方上传 / T-30 出数），已按门店 × 物料与预测量比对，统配外 = IF(预测−统配 &lt; 0, 0, 预测−统配)。</>
+            : <>统配数据尚未到达 —— 等 T-30 出数，或由业务方在下面<b>直接上传 Excel</b> 后立即比对。<br/>统配外 = IF(预测−统配 &lt; 0, 0, 预测−统配)</>}
+        </p>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button className="export-btn" onClick={() => fileRef.current?.click()} disabled={uploading}>
+            <Icon n="download" size={12} /> {uploading ? '解析中…' : '上传统配 Excel'}
+          </button>
+          <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} onChange={handleUpload} />
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>模板列：门店编码 / 门店名称 / 仓库 / 物料 / 统配量（过渡期手工上传，线上接湖仓「统配订单」）</span>
+        </div>
+        {upload && (
+          <div style={{ marginTop: 10, fontSize: 12, lineHeight: 1.8 }}>
+            <div>
+              📄 <b>{upload.name}</b> · {(upload.size / 1024).toFixed(1)} KB · 首表解析出 <b>{upload.rows}</b> 行 × {upload.cols.length} 列
+              {upload.note && <span style={{ color: 'var(--text-muted)' }}>（{upload.note}）</span>}
+            </div>
+            {upload.cols.length > 0 && (
+              <div style={{ overflowX: 'auto', marginTop: 6 }}>
+                <table className="data-table table-fit">
+                  <thead><tr>{upload.cols.map((c, i) => <th key={i}>{c || `列${i + 1}`}</th>)}</tr></thead>
+                  <tbody>
+                    {upload.preview.map((r, i) => (
+                      <tr key={i}>{upload.cols.map((_, j) => <td key={j} style={{ fontSize: 11 }}>{r[j] ?? ''}</td>)}</tr>
+                    ))}
+                  </tbody>
+                </table>
+                {upload.rows > 3 && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>仅预览前 3 行，共 {upload.rows} 行</div>}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* 统配比对（统配数据到达后展开） */}
       {tongpeiDone ? (
         <>
           <div className="card">
@@ -2057,15 +2034,7 @@ function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone }: { tongpei
             </table>
           </div>
         </>
-      ) : (
-        <div className="card" style={{ borderColor: 'var(--warn)', background: 'rgba(245,158,11,0.04)' }}>
-          <div className="card-title" style={{ color: 'var(--warn)' }}><Icon n="clock" style={{ marginRight: 6, color: 'inherit' }} />统配数据（T-30出数）</div>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.8 }}>
-            统配数据尚未到达，等待T-30出数后将自动进行统配比对。<br/>
-            统配外 = IF(预测-统配&lt;0, 0, 预测-统配)
-          </p>
-        </div>
-      )}
+      ) : null}
 
       {/* 安全库存明细（真算：安库 = round(仓上新预测总量 ÷ 28)；可销售天数 = 统配外 ÷ 日均消耗） */}
       {(() => {

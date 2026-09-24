@@ -1,5 +1,5 @@
-import type { MonitorWarehouseRow } from '../types'
-import { monitorNational, monitorWarehouses } from '../data/mock'
+import type { MonitorSubWhRow } from '../types'
+import { monitorSubWarehouses } from '../data/mock'
 
 /**
  * 「新品监控」看板（朱仙问数壳里的看板清单条目）的数据岛 —— 写入当前文档的 DOM。
@@ -20,34 +20,52 @@ import { monitorNational, monitorWarehouses } from '../data/mock'
  *   <script type="module" src="/src/main.tsx"> 都是 defer，**按文档顺序执行**，main.tsx 在前
  *   ⇒ 模块求值时就写好数据岛，np-monitor.js 执行时一定读得到。
  *
- * 2026-09-24 改版：看板收敛成「一个大宽表」（彬节：删掉 KPI 卡与趋势图、仓库要按茶姬真实清单铺开）
- *   ⇒ 数据岛只剩 24 仓明细 + 全国合计，**不再带 30 天趋势**（趋势图已删）。
+ * 2026-09-24 改版：
+ *   ① 看板收敛成「一个大宽表」（彬节：删掉 KPI 卡与趋势图、仓库按茶姬真实清单铺开）
+ *   ② 粒度改为**二级仓 × 核心物料**（彬节：「要按照二级仓的数据展示，二级仓的数量应该够多，
+ *      每一种物料都有很多个二级仓，核心物料大概四五种」）→ 数据岛 = 120 行
+ *      （5 种物料 × 24 个一级仓下的二级仓），不再带 30 天趋势。
  */
 
-const row = (w: MonitorWarehouseRow) => ({
-  n: w.warehouseName,
-  t: w.warehouseType,
-  sub: w.subsidiary || '',
-  prov: w.province || '',
+const row = (w: MonitorSubWhRow) => ({
+  wh1: w.wh1,
+  wh2: w.wh2,
+  sub: w.subsidiary,
+  /** 合并品名 */
+  mat: w.material,
+  unit: w.unit,
   stores: w.coversStores,
-  fc: w.forecastDailyCups,
-  ac: w.actualDailyCups,
+  /** 备货预测量（该二级仓该物料） */
+  fc: w.forecastQty,
+  /** 实际消耗 */
+  ac: w.actualQty,
   dev: w.deviationPct,
-  whd: w.warehouseSellableDays,
-  std: w.storeSellableDays,
+  /** 仓库可售天数 */
+  whd: w.sellableDays,
 })
 
 export interface MonitorSeed {
   source: string
-  national: ReturnType<typeof row>
-  warehouses: Array<ReturnType<typeof row>>
+  /** 口径说明（渲染在看板脚注里，避免「数据哪来的」被追问） */
+  note: {
+    materials: string[]
+    subWarehouses: number
+    primaryWarehouses: number
+    rows: number
+  }
+  rows: Array<ReturnType<typeof row>>
 }
 
 export function buildMonitorSeed(): MonitorSeed {
   return {
-    source: 'src/data/mock.ts · monitorWarehouses / monitorNational',
-    national: row(monitorNational),
-    warehouses: monitorWarehouses.map(row),
+    source: 'src/data/mock.ts · monitorSubWarehouses（二级仓 × 核心物料）',
+    note: {
+      materials: Array.from(new Set(monitorSubWarehouses.map(r => r.material))),
+      subWarehouses: Array.from(new Set(monitorSubWarehouses.map(r => r.wh2))).length,
+      primaryWarehouses: Array.from(new Set(monitorSubWarehouses.map(r => r.wh1))).length,
+      rows: monitorSubWarehouses.length,
+    },
+    rows: monitorSubWarehouses.map(row),
   }
 }
 

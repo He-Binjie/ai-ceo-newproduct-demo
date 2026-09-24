@@ -12,7 +12,7 @@ import { computeAll, type CalcParams, type CalcResult, type CalcMaterialInput } 
 import { getPageValue } from '../components/InlineEdit';
 import { useValueVersion } from '../components/InlineEdit';
 import {
-  mockProduct, mockMaterials, mockRegionCoefficients, storeBaseData,
+  mockProduct, aggregatedMaterials, mockRegionCoefficients, storeBaseData,
   allWarehouseSummary, supplierRoot,
 } from '../data/mock';
 
@@ -34,7 +34,9 @@ let freezing = false;
 /* ============================ 默认参数（底表原值） ============================ */
 
 function defaultMaterials(): CalcMaterialInput[] {
-  return mockMaterials.map(m => ({
+  // ⚠️ 用**聚合物料清单**（aggregatedMaterials）：Step 0 多选同系列新品时，
+  //    Step 2 起全链路按「合并品名」聚合 —— 共用物料只占一个席位、量按 demandFactors 加和。
+  return aggregatedMaterials.map(m => ({
     name: m.materialName,
     merged: m.mergedProductName || m.materialName,
     code: m.materialCode,
@@ -45,6 +47,7 @@ function defaultMaterials(): CalcMaterialInput[] {
     lossRate: m.lossRate,
     baseLossRate: m.lossRate,
     w: [m.cupRatioW1, m.cupRatioW2, m.cupRatioW3, m.cupRatioW4],
+    demandFactors: m.demandFactors,
   }));
 }
 

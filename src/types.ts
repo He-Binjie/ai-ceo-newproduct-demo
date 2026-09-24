@@ -31,11 +31,26 @@ export interface BOMRecord {
   shelfLifeDays: number;     // 原材料开封效期（天）
   stockCoefficient: number;  // 原材料备货系数
   lossRate: number;          // 损耗率
+  /**
+   * 多品聚合折算系数（W1-W4 各一个，默认 1＝不加成）。
+   *
+   * 用途：Step 0 可多选同系列新品，**共用物料的需求量必须按两品加和**（PRD §4.11「多品共用物料时
+   * 只能算总偏差（共用物料按系列聚合后统一计算）」）。但引擎里每个物料只有一个席位、杯量基准取
+   * 「系列主品」（品1：首周 609 / 首月 650），所以把另一品的需求折成主品基准下的倍数：
+   *
+   *   factor_n = (品1需求_n + 品2需求_n) ÷ 品1需求_n
+   *            = 1 + (杯量2_n × W2_n × 备货系数2) ÷ (杯量1_n × W1_n × 备货系数1)   ← 应用率同物料同损耗时约掉
+   *
+   * 品2 独有物料（冷冻凤梨汁）反过来：参数用品2 的，杯量按品2/品1 折算 ⇒ factor_n = 杯量2_n ÷ 杯量1_n。
+   */
+  demandFactors?: [number, number, number, number];
   // W1-W4杯占比（每行冗余，实际值相同）
   cupRatioW1: number;        // 第1周新品杯占比
   cupRatioW2: number;        // 第2周新品杯占比
   cupRatioW3: number;        // 第3周新品杯占比
   cupRatioW4: number;        // 第4周新品杯占比
+  /** 该行物料来自哪些新品（多品聚合时展示；单品 BOM 行不写） */
+  sourceProducts?: string[];
   // UI状态
   selected: boolean;
 }
@@ -186,24 +201,44 @@ export interface WizardState {
   confirmed: boolean;
 }
 
-// ===== V7.6 新增：上新期间监控看板（演示态） =====
-export interface MonitorWarehouseRow {
-  warehouseName: string;
-  warehouseType: '一级仓' | '二级仓';
-  subsidiary?: string;          // 子公司（茶姬仓清单：仓 ↔ 子公司 一一对应）
-  province?: string;            // 省
+// ===== V7.6：上新期间监控看板（2026-09-24 起：首页自建看板与 24 仓杯量监控行**已删除**） =====
+// 彬节：首页的仓库监控数据全部删除（看板里已经有了）→ PRD V7.8 §5.4 明确 6 项监控指标的
+// 看板载体＝智能问数看板。原先的 MonitorWarehouseRow / MonitorTrend / TrendPoint（30 天趋势）
+// 三个类型随之废弃，监控数据换成下面「二级仓 × 核心物料」的 MonitorSubWhRow。
+
+/**
+ * 「新品监控」看板行 —— **二级仓 × 核心物料** 粒度（2026-09-24 彬节口径）。
+ *
+ * 口径：
+ *   · 二级仓＝一级仓下的库区 / 共配仓（PRD §4.10「同一一级仓下的二级仓」；她报表口径里
+ *     「一级仓库名称 + 二级仓库名称」成对出现）。一级仓沿用门店底表的 24 个仓，每个仓按库区拆 2 个二级仓。
+ *   · 行 = 每种核心物料 × 它落到的所有二级仓（新品核心物料 5 种 → 5 × 24 = 120 行）。
+ *   · 备货预测量按「仓覆盖门店 × 单店周备货量」摊（单店周量取自分仓真算的全国预测量 ÷ 门店数 ÷ 4 周）
+ *     ⇒ 与分仓流程同一套口径，不是随机数。
+ *   · 实际消耗 / 偏差率 / 可售天数为上新期监控值（**演示态**：仓的偏差线 + 物料级偏移）。
+ */
+export interface MonitorSubWhRow {
+  /** 一级仓 */
+  wh1: string;
+  /** 二级仓（库区 / 共配仓） */
+  wh2: string;
+  subsidiary: string;
+  /** 合并品名 */
+  material: string;
+  unit: string;
+  /** 覆盖门店（＝所属一级仓覆盖门店） */
   coversStores: number;
-  forecastDailyCups: number;    // 仓备货预测日均杯量 = 仓维度上新预测总量 ÷ 28
-  actualDailyCups: number;      // 仓实际日均杯量 = 仓对应门店成品销售杯量 ÷ 售卖天数 N（最近 N 天、不含当天）
-  deviationPct: number;         // 仓偏差率 =（实际 − 预测）÷ 预测 ×100%；|偏差| > 20% 触发预警
-  warehouseSellableDays: number;// 仓库可售天数 = 物料可用库存 ÷ 仓物料订货日均（订货量 ÷ 订货天数 N）
-  storeSellableDays: number;    // 仓预计门店可售天数 =（仓库可用库存+门店库存+门店在途）÷ 门店成品物料销量
+  /** 备货预测量（该二级仓该物料的周备货量） */
+  forecastQty: number;
+  /** 实际消耗 */
+  actualQty: number;
+  /** 偏差率（%） */
+  deviationPct: number;
+  /** 仓库可售天数 */
+  sellableDays: number;
   isDeviationAlert: boolean;
   isStockAlert: boolean;
 }
-
-export interface TrendPoint { day: number; date: string; cups: number; share: number; }
-export interface MonitorTrend { national: TrendPoint[]; byWarehouse: Record<string, TrendPoint[]>; }
 
 // ===== V7.6 新增：参数面板（所有参数都支持页面直接改） =====
 export interface ParamItem {

@@ -57,6 +57,11 @@ export type CalcMaterialInput = {
   baseLossRate: number;
   /** W1-W4 杯占比（成品维度，同品全物料同值） */
   w: [number, number, number, number];
+  /**
+   * 多品聚合折算系数（W1-W4，默认 1＝不加成）—— 见 BOMRecord.demandFactors 的口径说明。
+   * 多选同系列新品时，共用物料的需求 = 各品需求之和，折成「系列主品杯量基准」下的倍数逐周相乘。
+   */
+  demandFactors?: [number, number, number, number];
 };
 
 export type CalcStoreInput = {
@@ -282,6 +287,11 @@ export function weekMinQty(shelfLifeDays: number): number {
   return Math.max(1, Math.round(7 / days));
 }
 
+/** 多品聚合折算系数（默认 [1,1,1,1]＝不加成）—— 多选同系列新品时，共用物料需求量 = 各品之和 */
+function demandFactorsOf(mat: CalcMaterialInput): [number, number, number, number] {
+  return mat.demandFactors ?? [1, 1, 1, 1];
+}
+
 /** 单店/单仓口径的 W1-W4 物料量（§4.7 + §4.8），返回 [W1,W2,W3,W4] 与效期标记 */
 function weeklyQty(
   firstWeekDaily: number,
@@ -289,11 +299,12 @@ function weeklyQty(
   mat: CalcMaterialInput,
 ): { w: [number, number, number, number]; effMin: number; effLifted: boolean } {
   const app = applicationRateFor(mat);
+  const f = demandFactorsOf(mat);
   const raw: [number, number, number, number] = [
-    (firstWeekDaily * mat.w[0] * 7) / app.w1 * mat.stockCoefficient,
-    (monthDaily * mat.w[1] * 7) / app.w2 * mat.stockCoefficient,
-    (monthDaily * mat.w[2] * 7) / app.w3 * mat.stockCoefficient,
-    (monthDaily * mat.w[3] * 7) / app.w4 * mat.stockCoefficient,
+    (firstWeekDaily * mat.w[0] * 7) / app.w1 * mat.stockCoefficient * f[0],
+    (monthDaily * mat.w[1] * 7) / app.w2 * mat.stockCoefficient * f[1],
+    (monthDaily * mat.w[2] * 7) / app.w3 * mat.stockCoefficient * f[2],
+    (monthDaily * mat.w[3] * 7) / app.w4 * mat.stockCoefficient * f[3],
   ];
   const effMin = weekMinQty(mat.shelfLifeDays);
   const lifted = raw.map(v => (v < effMin ? effMin : v)) as [number, number, number, number];
@@ -404,12 +415,13 @@ export function calcMaterialSummary(p: CalcParams, whRows: WhRow[]): MatRow[] {
 
   return p.materials.map(m => {
     const app = applicationRateFor(m);
-    // 理论需求量（不带区域系数、不带备货系数）＝ 单店纯用量 × 门店数
+    const f = demandFactorsOf(m);
+    // 理论需求量（不带区域系数、不带备货系数）＝ 单店纯用量 × 门店数（含多品聚合折算：共用物料 = 各品之和）
     const perStoreTheory =
-      (p.product.firstWeekDailyCups * m.w[0] * 7) / app.w1 +
-      (p.product.firstMonthDailyCups * m.w[1] * 7) / app.w2 +
-      (p.product.firstMonthDailyCups * m.w[2] * 7) / app.w3 +
-      (p.product.firstMonthDailyCups * m.w[3] * 7) / app.w4;
+      (p.product.firstWeekDailyCups * m.w[0] * 7) / app.w1 * f[0] +
+      (p.product.firstMonthDailyCups * m.w[1] * 7) / app.w2 * f[1] +
+      (p.product.firstMonthDailyCups * m.w[2] * 7) / app.w3 * f[2] +
+      (p.product.firstMonthDailyCups * m.w[3] * 7) / app.w4 * f[3];
     const theoreticalQty = Math.round(perStoreTheory * n);
 
     const mats = whRows.map(w => w.materials.find(x => x.material === m.name)!);
@@ -492,13 +504,14 @@ export function computeAll(p: CalcParams, version = 0): CalcResult {
     const whMats = warehouses.map(w => w.materials.find(x => x.material === worst.material)!);
     // 「加系数、未效期」的全国量 = Σ 仓（单店 W1-W4 原始量 × 仓门店数）
     const app = applicationRateFor(worstMat);
+    const wf = demandFactorsOf(worstMat);
     const qtyNoExpire = warehouses.reduce((a, w) => {
       const c = w.regionCoeff;
       const perStore =
-        (p.product.firstWeekDailyCups * c * worstMat.w[0] * 7) / app.w1 * worstMat.stockCoefficient +
-        (p.product.firstMonthDailyCups * c * worstMat.w[1] * 7) / app.w2 * worstMat.stockCoefficient +
-        (p.product.firstMonthDailyCups * c * worstMat.w[2] * 7) / app.w3 * worstMat.stockCoefficient +
-        (p.product.firstMonthDailyCups * c * worstMat.w[3] * 7) / app.w4 * worstMat.stockCoefficient;
+        (p.product.firstWeekDailyCups * c * worstMat.w[0] * 7) / app.w1 * worstMat.stockCoefficient * wf[0] +
+        (p.product.firstMonthDailyCups * c * worstMat.w[1] * 7) / app.w2 * worstMat.stockCoefficient * wf[1] +
+        (p.product.firstMonthDailyCups * c * worstMat.w[2] * 7) / app.w3 * worstMat.stockCoefficient * wf[2] +
+        (p.product.firstMonthDailyCups * c * worstMat.w[3] * 7) / app.w4 * worstMat.stockCoefficient * wf[3];
       return a + perStore * w.storeCount;
     }, 0);
     const rQtyNoExpire = Math.round(qtyNoExpire);

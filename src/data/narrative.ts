@@ -11,12 +11,13 @@ export type NarrativeEntry = {
   prdSteps: string;
 };
 
-/** key = RIGHT_TABS 的 step（0 监控看板 / 1-4 四步 / 5 参数面板） */
+/** key = RIGHT_TABS 的 step（0 监控入口 / 1-4 四步 / 5 参数面板） */
 export const NARRATIVE: Record<number, NarrativeEntry> = {
   0: {
+    // 2026-09-24：首页监控数据已按 PRD V7.8 §5.4 全部删除（看板载体＝智能问数看板），本 Tab 只剩指路卡
     question: '这批新品现在卖得怎么样、要不要动手？',
-    canEdit: '售卖天数 N / 订货天数 N / 预警阈值天数 → 参数面板',
-    prdSteps: '⑫ 上新期间库存监控（§5.4 六项看板指标 + C 类 2 条预警）',
+    canEdit: '不在本页改 —— 看数据进「智能问数 → 看板 → 新品监控」；预警走飞书推送',
+    prdSteps: '⑫ 上新期间监控（§5.4 六项指标看板载体＝智能问数看板 + C 类 2 条预警）',
   },
   1: {
     question: '卖得动的门店有多少、每家每天能卖多少杯？',
