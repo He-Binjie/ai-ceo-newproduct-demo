@@ -57,10 +57,70 @@ function wenshuShell(): Plugin {
   }
 }
 
+/**
+ * 自写 PostCSS 插件：给我们自己的 CSS 加 `#np-root ` 作用域前缀（B 方案 §3.5 · P5）
+ *
+ * 为什么自写而不是装 postcss-prefix-selector / postcss-prefixwrap：不引新依赖（her 侧作用域化也是自写状态机）。
+ * 为什么不引 postcss 的类型：postcss 只是 vite 的传递依赖（hoist 在 node_modules 里），
+ *   为了「哪 npm 不再提升它就静默挂掉」这种事，这里刻意不 import 它的类型，参数用 any 标注。
+ *
+ * 三条豁免 / 改写规则（都有理由，改动前先读注释）：
+ *   ① `:root` 保持全局 —— 设计令牌与她的 wenshu.css 逐项一致（规格 §2），加前缀会打断两个子树共用同一套变量。
+ *   ② `html` / `body` 元素选择器改写成 `#np-root` —— 与她对 her `html,body{}` 的处理对称。
+ *      必须改，不能留全局：我们的 `body{line-height:1.6}` 若保持全局，会**继承进她的子树**（她 #wenshu-root
+ *      规则里只声明了 font-family/background/color/font-size，没有 line-height）→ 正是 P5 要消除的串味。
+ *      代价：真实 html/body 丢掉 UA margin 重置，见 src/wenshu-shell.css 里的全局兜底（那个文件豁免作用域化）。
+ *   ③ `@keyframes` 内部的 `0%/from/to` 不前缀 —— 前缀会让动画整条失效。
+ *   豁免文件：src/wenshu-shell.css（它的职责就是管两个顶层容器 #np-root / #wenshu-root 的可见性，加前缀立刻失效）
+ *            + 任何 public/wenshu/**（她的产物走 <link>，本来不进 vite 的 CSS 管线，这里是纵深防御）。
+ */
+function scopeNpRoot(): any {
+  const EXEMPT = ['/wenshu-shell.css', '/public/wenshu/']
+  const GLOBAL_SELECTOR = /^:root$/
+  const ROOT_ELEMENT = /^(html|body)$/
+  const stats = { prefixed: 0, kept: 0, rewritten: 0 }
+  return {
+    postcssPlugin: 'ai-ceo-scope-np-root',
+    Once(root: any, { result }: any) {
+      const file = String(result.opts.from ?? '').replace(/\\/g, '/')
+      if (EXEMPT.some((p) => file.includes(p))) {
+        console.log(`[scope-np-root] 豁免（不加前缀）：${file}`)
+        return
+      }
+      root.walkRules((rule: any) => {
+        const parent = rule.parent
+        if (parent && parent.type === 'atrule' && /keyframes$/i.test(parent.name)) return
+        rule.selectors = rule.selectors.map((sel: string) => {
+          const s = sel.trim()
+          if (GLOBAL_SELECTOR.test(s)) {
+            stats.kept++
+            return s
+          }
+          if (ROOT_ELEMENT.test(s)) {
+            stats.rewritten++
+            return '#np-root'
+          }
+          stats.prefixed++
+          return `#np-root ${s}`
+        })
+      })
+      if (file.includes('styles.css')) {
+        console.log(
+          `[scope-np-root] ${file.split('/').pop()}：前缀 ${stats.prefixed} 个选择器 / html,body 改写 ${stats.rewritten} / :root 保持全局 ${stats.kept}`,
+        )
+      }
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), wenshuShell()],
   base: '/ai-ceo-newproduct-demo/',
+  css: {
+    // 我们的 CSS 一律加 #np-root 作用域（P5）；她的 wenshu.css 走 <link>，不进这条管线
+    postcss: { plugins: [scopeNpRoot()] },
+  },
   server: {
     port: 3003,
   },

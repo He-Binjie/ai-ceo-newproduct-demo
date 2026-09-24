@@ -16,6 +16,19 @@
   --shell-header-h: 52px;
 }
 
+/* ---- 宿主 html/body 的全局重置（P5 引入，必须留在这里） --------------------
+ * P5 把我们的 CSS 全量作用域化进 #np-root（vite.config.ts 的 scopeNpRoot 插件），带来两个副作用：
+ *   ① 我们的 `* { margin:0; padding:0 }` 变成 `#np-root *` → **不再匹配真实 body**，
+ *      body 恢复 UA 默认的 8px margin → #np-root 被撑偏 8px + 整页多出滚动条（实测过，必须补回）。
+ *   ② 我们的 `body { … }` 被改写成 `#np-root { … }` → 真实 body 回归浏览器默认外观。
+ * 所以这三行 + background 兜底放在这个「豁免作用域化」的文件里，让宿主的观感与作用域化之前完全一致。 */
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg-main);
+}
+
 /* 她整页的容器：始终占据「我们 header 以下」的全部空间，但默认不可见、不可点 */
 #wenshu-root {
   position: fixed;

@@ -157,7 +157,12 @@ body {
   gap: 14px;
 }
 
-.clock {
+/* ⚠️ 必须用直接子代链 `.app-header > .user-info > .clock`，不要写成 `.clock`：
+   她搬进我们 header 槽位的节点里也有 `.clock`（`<span class="clock" id="clock">`），
+   `.clock` 会被 P5 前缀成 `#np-root .clock` 而**继续命中她的时钟**（把她时钟改写成 mono/12px/muted）。
+   同 B4 里 `html[data-skill='wenshu'] … .clock{display:none}` 的收窄手法；
+   正控断言 `#clock.matches('#np-root .clock')` 见 scripts/verify-merge-wenshu-dom.js 的 P5_scope 段。 */
+.app-header > .user-info > .clock {
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-muted);
