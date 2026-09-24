@@ -22,6 +22,11 @@
     // 她技能弹层里的「新品分货」→ 交给我们（她的 np* 那套按规格保留代码、不给入口）
     if (k === 'new') {
       if (typeof window.__aiCeoSwitchSkill === 'function') {
+        // ⚠️ 她的 pickSkill 第一行就是 `skillPop.classList.remove('open')`；
+        //    我们在这里提前 return 会跳过它 → 她的技能弹层残留 `open`，
+        //    下次再进她的模块时弹层自己弹着（2026-09-24 实测）。这里补上同一个动作，仍然不改她的文件。
+        var pop = document.getElementById('skillPop')
+        if (pop) pop.classList.remove('open')
         window.__aiCeoSwitchSkill('newproduct')
         return
       }

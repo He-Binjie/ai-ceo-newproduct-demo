@@ -487,6 +487,37 @@ assert('动态 id 集合 == 基线（她改了运行时生成逻辑要复核）'
 const staticMissing = dynamicIds.filter((x) => idsIn(bodyMarkupOnly).includes(x))
 assert('她 JS 引用的静态 id 全在 markup/header 中', staticMissing.length === 0, staticMissing.join(','))
 
+// --- 3.4b 宿主侧类名撞名闸门（2026-09-24 新增：实测踩过一次，代价是「她的按钮彻底失效」） ---
+// 她的 JS 有 5 处 `document.querySelector[All](...)`，取的是**全文档**匹配；
+// 而我们的 #root 在 DOM 顺序里排在她的 #wenshu-root 之前 ⇒ 宿主一旦用了同名 class，
+// 她那行就会绑到**我们的**节点（实测：`document.querySelector('.skill-btn')` 绑到我们的按钮 →
+// ① 她的「选择技能」按钮点不开弹层，永远选不到「新品分货」，跳不回我们页面
+// ② 我们点自己的按钮反而会把她的弹层打开）。
+// 对策：宿主侧禁用她 querySelector 用到的 class（我们已把 skill-btn 改名 np-skill-btn）＋ 这条闸门兜住复发。
+// 判定细则：
+//   · 带 `#id` 限定或属性选择器的选择器**不计**（如 `#dash .colmenu` —— 跨不了子树）
+//   · 多 class 选择器（如 `.colmenu.open`）要求**每个 class 都命中宿主**才算撞（只命中一个不构成真实风险）
+const herClassQueries = []
+for (const m of jsSource.matchAll(/document\.querySelector(?:All)?\(\s*['"]([^'"]+)['"]\s*\)/g)) {
+  const sel = m[1]
+  if (sel.includes('#') || sel.includes('[')) continue
+  const classes = [...sel.matchAll(/\.([A-Za-z0-9_-]+)/g)].map((c) => c[1])
+  if (classes.length) herClassQueries.push({ sel, classes })
+}
+const HOST_FILES = ['src/App.tsx', 'src/styles.css', 'src/index.css', 'src/App.css', 'src/wenshu-shell.css', 'index.html']
+const hostPath = (f) => path.join(ROOT, f)
+const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|\s)\/\/[^\n]*/g, '$1 ')
+const hostFiles = HOST_FILES.filter((f) => fs.existsSync(hostPath(f)))
+const hostSrc = hostFiles.map((f) => stripComments(fs.readFileSync(hostPath(f), 'utf8'))).join('\n')
+const classRe = (c) => new RegExp(`(^|[^\\w-])\\.?${escapeRe(c)}(?![\\w-])`)
+const hasClass = (c) => classRe(c).test(hostSrc)
+const classFiles = (c) => hostFiles.filter((f) => classRe(c).test(stripComments(fs.readFileSync(hostPath(f), 'utf8'))))
+const classCollisions = herClassQueries.filter((q) => q.classes.every(hasClass))
+assert('宿主侧未使用她 document.querySelector 用到的 class（撞名会静默劫走她的绑定）',
+  classCollisions.length === 0,
+  classCollisions.map((q) => `${q.sel} @ ${[...new Set(q.classes.flatMap(classFiles))].join(',')}`).join(' | ') +
+  `（她 query 的选择器：${herClassQueries.map((q) => q.sel).join(' ')}）`)
+
 // 关键 id 显式点名（规格 §7 P1 / 必做 2）
 for (const must of ['bellPop', 'bcCur', 'navHome', 'navBoard', 'meMask', 'chatMsgs', 'alertBadge', 'wenshu-header-center', 'wenshu-header-right']) {
   const where = markupIds.has(must) ? 'root' : headerIds.has(must) ? 'header' : null
@@ -536,6 +567,7 @@ const manifest = {
     bodyClassListOps: (jsSource.match(/document\.body\.classList\./g) || []).length,
   },
   ids: { bodyTotal: rawIds.length, inMarkup: markupIds.size, inHeader: headerIds.size, droppedWithBrand: droppedIds },
+  hostClassGate: { herQuerySelectors: herClassQueries.map((q) => q.sel), hostFiles: HOST_FILES.filter((f) => fs.existsSync(hostPath(f))), collisions: classCollisions.map((q) => q.sel) },
   bodyAttrs,
   assertions,
 }

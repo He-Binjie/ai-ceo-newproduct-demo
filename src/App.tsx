@@ -184,6 +184,8 @@ function App() {
   );
   const [jumpedTab, setJumpedTab] = useState<Step | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  /** 最新的 showWelcome（见下方 __aiCeoSwitchSkill：跳回我们页面时重放欢迎语；showWelcome 定义在后面的行号） */
+  const showWelcomeRef = useRef<() => void>(() => {});
 
   // Auto-switch right tab when step changes
   useEffect(() => {
@@ -222,10 +224,14 @@ function App() {
 
   // ③ 双向路由：她的技能弹层选「新品分货」→ 切回我们的新品分仓（见 public/wenshu/shell-bridge.js）
   //    ⚠️ 我方代码只允许暴露这一个 window 全局（规格 §4 坑 2：她 200+ 处 onclick 依赖 window 全局）
+  //    ⚠️ 跳回来必须**重放欢迎语**（2026-09-24 实测）：进她的模块时我们清空了 messages，
+  //       只切可见性的话回来会剩一个卡在「正在加载...」的空面板 —— 没有欢迎语、没有「开始新品分仓」入口 chip。
+  //       用 ref 拿最新的 showWelcome（它在下面才定义，直接引用会踩块级作用域顺序）。
   useEffect(() => {
     (window as Window & { __aiCeoSwitchSkill?: (id: string) => void }).__aiCeoSwitchSkill = (id: string) => {
       setSkillMode(id === 'newproduct' ? 'newproduct' : 'wenshu');
       setActiveSkill(SKILLS.find(s => (id === 'newproduct' ? s.id === 'newproduct' : s.id === 'query')) ?? SKILLS[0]);
+      if (id === 'newproduct') showWelcomeRef.current();
     };
     return () => {
       delete (window as Window & { __aiCeoSwitchSkill?: (id: string) => void }).__aiCeoSwitchSkill;
@@ -285,6 +291,8 @@ function App() {
       );
     }, 300);
   };
+  // 让 __aiCeoSwitchSkill（她的技能弹层 → 我们的新品分仓）拿到最新的 showWelcome
+  useEffect(() => { showWelcomeRef.current = showWelcome; });
 
   const triggerStepMessage = (s: Step) => {
     switch (s) {
@@ -718,7 +726,13 @@ function App() {
               />
               <div className="input-toolbar">
                 <div className="toolbar-left">
-                  <button className="skill-btn" onClick={() => setShowSkillPopup(!showSkillPopup)}>
+                  {/* ⚠️ 类名是 `np-skill-btn`，**不要**改回 `skill-btn`（2026-09-24 实测踩到）：
+                      她的 wenshu.js 顶层有 `document.querySelector('.skill-btn').addEventListener(...)`
+                      —— 取的是**全文档第一个**匹配节点。我们的 #root 在 DOM 里排在她的 #wenshu-root 之前，
+                      撞名后她那行绑到了**我们的**按钮上 ⇒ ① 她的「选择技能」按钮彻底失效（点不开她的技能弹层，
+                      也就永远选不到「新品分货」→ 跳不回我们页面）② 我们点自己的按钮反而会把她的弹层打开。
+                      闸门：scripts/build-wenshu.mjs 的 `宿主侧不得使用她 document.querySelector 用到的 class`。 */}
+                  <button className="np-skill-btn" onClick={() => setShowSkillPopup(!showSkillPopup)}>
                     <span>+</span> 选择技能
                   </button>
                 </div>

@@ -18,10 +18,12 @@ const WENSHU_GEN = path.resolve('src/skills/wenshu/generated')
  */
 function wenshuShell(): Plugin {
   let base = '/'
+  let isBuild = false
   return {
     name: 'ai-ceo-wenshu-shell',
     configResolved(cfg) {
       base = cfg.base
+      isBuild = cfg.command === 'build'
     },
     transformIndexHtml: {
       order: 'pre',
@@ -33,11 +35,21 @@ function wenshuShell(): Plugin {
           }
           return fs.readFileSync(p, 'utf8')
         }
+        /**
+         * ⚠️ base 只能补一次（2026-09-24 实测踩到，别改回去）：
+         *   build —— vite 的 buildHtmlPlugin 不会给 index.html 里的绝对路径补 base，必须我们自己补（否则线上 404）。
+         *   dev   —— vite dev 的 html 中间件**会**给绝对路径补 base，我们再补一次就成了
+         *            `/ai-ceo-newproduct-demo/ai-ceo-newproduct-demo/wenshu/wenshu.js`；
+         *            dev 的 SPA fallback 把 index.html（text/html）当脚本/CSS 返回 —— **HTTP 200、控制台不报错**，
+         *            但她的 CSS/JS 一行都不生效 ⇒ 本地 dev 下她整个模块「只有壳、没样式、没交互」。
+         * 判定口径：产物里 wenshu 的 src/href 必须是**单个** base 前缀（dev/build 都是）。
+         */
+        const rootBase = isBuild ? base.replace(/\/+$/, '') : ''
         const markup = read('wenshu.markup.html')
         const header = read('wenshu.header.html')
         // 她的 <head> CDN 依赖（echarts / xlsx）→ 本地文件；`__BASE__` 由构建脚本留的占位符
-        const vendor = read('wenshu.vendor.html').replaceAll('__BASE__', base.replace(/\/+$/, ''))
-        const url = (p: string) => `${base.replace(/\/+$/, '')}/${p}`
+        const vendor = read('wenshu.vendor.html').replaceAll('__BASE__', rootBase)
+        const url = (p: string) => `${rootBase}/${p}`
         if (!html.includes('</head>') || !html.includes('</body>')) {
           throw new Error('[wenshu-shell] index.html 缺 </head> 或 </body>，注入位置找不到')
         }

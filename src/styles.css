@@ -601,7 +601,9 @@ body {
   gap: 8px;
 }
 
-.skill-btn {
+.np-skill-btn {
+  /* ⚠️ 原类名 `skill-btn` 与她 wenshu.js 里的 `document.querySelector('.skill-btn')` 撞名
+     （她那行会绑到 DOM 里更靠前的**我们的**按钮上）→ 已改名。详见 src/App.tsx 那段注释。 */
   display: flex;
   align-items: center;
   gap: 5px;
@@ -616,7 +618,7 @@ body {
   font-family: var(--font-sans);
 }
 
-.skill-btn:hover {
+.np-skill-btn:hover {
   color: var(--accent);
   border-color: var(--accent-bright);
   background: var(--accent-light);

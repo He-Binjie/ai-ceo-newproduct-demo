@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-24T02:43:25.773Z",
+  "generatedAt": "2026-09-24T05:29:05.672Z",
   "source": {
     "file": "src/skills/wenshu/demo.v4.3-0921.raw.html",
     "chars": 1654864,
@@ -88,6 +88,26 @@
     "inMarkup": 55,
     "inHeader": 10,
     "droppedWithBrand": []
+  },
+  "hostClassGate": {
+    "herQuerySelectors": [
+      ".colmenu.open",
+      ".colmenu.open",
+      ".skill-btn",
+      ".qs-dims",
+      ".qs-body",
+      ".qs-dims",
+      ".np-colcfg-pop.open"
+    ],
+    "hostFiles": [
+      "src/App.tsx",
+      "src/styles.css",
+      "src/index.css",
+      "src/App.css",
+      "src/wenshu-shell.css",
+      "index.html"
+    ],
+    "collisions": []
   },
   "bodyAttrs": {
     "class": "m-chat"
@@ -192,6 +212,11 @@
       "name": "她 JS 引用的静态 id 全在 markup/header 中",
       "ok": true,
       "detail": ""
+    },
+    {
+      "name": "宿主侧未使用她 document.querySelector 用到的 class（撞名会静默劫走她的绑定）",
+      "ok": true,
+      "detail": "（她 query 的选择器：.colmenu.open .colmenu.open .skill-btn .qs-dims .qs-body .qs-dims .np-colcfg-pop.open）"
     },
     {
       "name": "关键 id #bellPop 落位",
