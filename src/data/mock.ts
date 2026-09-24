@@ -491,30 +491,63 @@ function monitorTrendFor(seed: number, baseCups: number, baseShare: number): Tre
   return out;
 }
 
-const MONITOR_WH_BASE: Array<{ name: string; dev: number; whDays: number; storeDays: number; share: number }> = [
-  { name: '北京二级仓', dev: 6.2,  whDays: 8.4,  storeDays: 14.2, share: 7.4 },
-  { name: '广东一级仓', dev: -8.4, whDays: 9.1,  storeDays: 15.6, share: 10.6 },
-  { name: '上海一级仓', dev: 12.1, whDays: 7.6,  storeDays: 13.1, share: 9.2 },
-  { name: '湖北一级仓', dev: 23.6, whDays: 4.1,  storeDays: 9.4,  share: 8.6 },
-  { name: '四川一级仓', dev: -5.3, whDays: 8.8,  storeDays: 14.0, share: 7.1 },
-  { name: '浙江一级仓', dev: -21.8, whDays: 5.3, storeDays: 11.2, share: 6.9 },
-  { name: '辽宁一级仓', dev: 4.4,  whDays: 6.6,  storeDays: 12.4, share: 5.8 },
-  { name: '天津一级仓', dev: 9.1,  whDays: 11.4, storeDays: 16.8, share: 6.4 },
-];
-
-function whStoreCount(name: string): number {
-  const info = allWarehouseSummary.find(a => a.warehouseName === name);
-  return info ? info.storeCount : 700;
-}
+/* 「新品监控」仓维度底表 —— **茶姬真实仓清单 24 个**（20 一级仓 + 4 二级仓：北京/海南/新疆/甘青宁）。
+   仓名 / 子公司 / 省 取自茶姬门店底表（与 src/data/mock.ts 的 storeBaseData 同源，24 个仓一一对应），
+   与参数面板「区域系数 = 24 个子公司」同一口径。
+   ⚠️ 门店数口径（2026-09-24 改，彬节：仓库太少、按茶姬真实仓库数据来）：
+      覆盖门店 = 按门店底表的仓分布（50 家样本）等比放大到全国 7,188 家，Σ 24 仓 = 7,188 ✓。
+      与 9/20 会议那份「8 仓门店数」（892/1245/1034/978/856/812/623/748，Σ 同样=7,188）**不同源**：
+      那 8 个仓是这 24 个的子集，两套数不能混在同一张表里 —— 本表按「茶姬真实仓清单」铺开 24 仓。
+   dev / whDays / storeDays 为演示值（确定性，不用随机数）：|偏差|>20% 命中 湖北/浙江；可售天数<7 天命中 湖北/浙江/辽宁。
+   备货预测日均杯量 = 覆盖门店 × 首周日均（FIRST_WEEK=609）；实际 = 预测 × (1 + dev%)。
+   排序 = 一级仓在前（覆盖门店降序）、二级仓在后（北京 431 / 海南 / 新疆 / 甘青宁 各 144）。 */
+const MONITOR_WH_BASE: Array<{
+  name: string
+  sub: string
+  prov: string
+  stores: number
+  dev: number
+  whDays: number
+  storeDays: number
+  share: number
+}> = [
+  /* 一级仓（规模降序） */
+  { name: '广东一级仓',  sub: '广东子公司',  prov: '广东省',           stores: 567, dev: -8.4,  whDays: 9.1,  storeDays: 15.6, share: 10.6 },
+  { name: '上海一级仓',  sub: '上海子公司',  prov: '上海市',           stores: 431, dev: 12.1,  whDays: 7.6,  storeDays: 13.1, share: 9.2 },
+  { name: '浙江一级仓',  sub: '浙江子公司',  prov: '浙江省',           stores: 431, dev: -21.8, whDays: 5.3,  storeDays: 11.2, share: 6.9 },
+  { name: '江苏一级仓',  sub: '江苏子公司',  prov: '江苏省',           stores: 288, dev: 7.8,   whDays: 9.6,  storeDays: 15.1, share: 7.6 },
+  { name: '四川一级仓',  sub: '四川子公司',  prov: '四川省',           stores: 288, dev: -5.3,  whDays: 8.8,  storeDays: 14.0, share: 7.1 },
+  { name: '湖北一级仓',  sub: '湖北子公司',  prov: '湖北省',           stores: 288, dev: 23.6,  whDays: 4.1,  storeDays: 9.4,  share: 8.6 },
+  { name: '重庆一级仓',  sub: '重庆子公司',  prov: '重庆市',           stores: 288, dev: -3.2,  whDays: 8.2,  storeDays: 13.6, share: 5.4 },
+  { name: '湖南一级仓',  sub: '湖南子公司',  prov: '湖南省',           stores: 288, dev: 11.4,  whDays: 7.1,  storeDays: 12.8, share: 6.1 },
+  { name: '福建一级仓',  sub: '福建子公司',  prov: '福建省',           stores: 288, dev: -6.6,  whDays: 8.6,  storeDays: 14.4, share: 6.6 },
+  { name: '山东一级仓',  sub: '山东子公司',  prov: '山东省',           stores: 288, dev: 5.1,   whDays: 9.9,  storeDays: 15.8, share: 6.2 },
+  { name: '辽宁一级仓',  sub: '辽宁子公司',  prov: '辽宁省',           stores: 288, dev: 4.4,   whDays: 6.6,  storeDays: 12.4, share: 5.8 },
+  { name: '天津一级仓',  sub: '天津子公司',  prov: '天津市',           stores: 288, dev: 9.1,   whDays: 11.4, storeDays: 16.8, share: 6.4 },
+  { name: '陕西一级仓',  sub: '陕西子公司',  prov: '陕西省',           stores: 288, dev: -9.7,  whDays: 7.8,  storeDays: 13.2, share: 5.2 },
+  { name: '云南一级仓',  sub: '云南子公司',  prov: '云南省',           stores: 288, dev: 2.6,   whDays: 10.4, storeDays: 16.2, share: 4.9 },
+  { name: '贵州一级仓',  sub: '贵州子公司',  prov: '贵州省',           stores: 288, dev: 13.8,  whDays: 7.3,  storeDays: 12.1, share: 4.6 },
+  { name: '江西一级仓',  sub: '江西子公司',  prov: '江西省',           stores: 288, dev: -4.1,  whDays: 8.9,  storeDays: 14.8, share: 5.1 },
+  { name: '安徽一级仓',  sub: '安徽子公司',  prov: '安徽省',           stores: 288, dev: 8.3,   whDays: 9.2,  storeDays: 15.4, share: 5.6 },
+  { name: '广西一级仓',  sub: '广西子公司',  prov: '广西壮族自治区',   stores: 288, dev: -11.2, whDays: 7.5,  storeDays: 12.6, share: 4.4 },
+  { name: '河南一级仓',  sub: '河南子公司',  prov: '河南省',           stores: 288, dev: 6.9,   whDays: 10.1, storeDays: 16.0, share: 6.3 },
+  { name: '山西一级仓',  sub: '山西子公司',  prov: '山西省',           stores: 288, dev: -2.4,  whDays: 8.5,  storeDays: 13.9, share: 4.2 },
+  /* 二级仓 */
+  { name: '北京二级仓',  sub: '北京子公司',  prov: '北京市',           stores: 431, dev: 6.2,   whDays: 8.4,  storeDays: 14.2, share: 7.4 },
+  { name: '海南二级仓',  sub: '海南子公司',  prov: '海南省',           stores: 144, dev: 15.6,  whDays: 7.4,  storeDays: 11.6, share: 3.8 },
+  { name: '新疆二级仓',  sub: '新疆子公司',  prov: '新疆维吾尔自治区', stores: 144, dev: -13.4, whDays: 9.4,  storeDays: 15.2, share: 3.4 },
+  { name: '甘青宁二级仓', sub: '甘青宁子公司', prov: '甘肃省',           stores: 144, dev: 3.7,   whDays: 7.9,  storeDays: 13.4, share: 3.1 },
+]
 
 export const monitorWarehouses: MonitorWarehouseRow[] = MONITOR_WH_BASE.map(w => {
-  const cov = whStoreCount(w.name);
-  const forecast = Math.round(cov * FIRST_WEEK);
-  const actual = Math.round(forecast * (1 + w.dev / 100));
+  const forecast = Math.round(w.stores * FIRST_WEEK)
+  const actual = Math.round(forecast * (1 + w.dev / 100))
   return {
     warehouseName: w.name,
     warehouseType: w.name.includes('二级') ? '二级仓' : '一级仓',
-    coversStores: cov,
+    subsidiary: w.sub,
+    province: w.prov,
+    coversStores: w.stores,
     forecastDailyCups: forecast,
     actualDailyCups: actual,
     deviationPct: w.dev,
@@ -522,8 +555,8 @@ export const monitorWarehouses: MonitorWarehouseRow[] = MONITOR_WH_BASE.map(w =>
     storeSellableDays: w.storeDays,
     isDeviationAlert: Math.abs(w.dev) > 20,
     isStockAlert: w.whDays < 7,
-  };
-});
+  }
+})
 
 export const monitorNational: MonitorWarehouseRow = {
   warehouseName: '全国',
@@ -541,7 +574,7 @@ export const monitorNational: MonitorWarehouseRow = {
 export const monitorTrend: MonitorTrend = {
   national: monitorTrendFor(0.4, 7188 * FIRST_WEEK, 6.8),
   byWarehouse: MONITOR_WH_BASE.reduce((acc, w) => {
-    acc[w.name] = monitorTrendFor(0.4 + w.share / 10, whStoreCount(w.name) * FIRST_WEEK, w.share);
+    acc[w.name] = monitorTrendFor(0.4 + w.share / 10, w.stores * FIRST_WEEK, w.share)
     return acc;
   }, {} as Record<string, TrendPoint[]>),
 };

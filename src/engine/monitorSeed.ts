@@ -1,12 +1,12 @@
-import type { MonitorTrend, MonitorWarehouseRow, TrendPoint } from '../types'
-import { monitorNational, monitorTrend, monitorWarehouses } from '../data/mock'
+import type { MonitorWarehouseRow } from '../types'
+import { monitorNational, monitorWarehouses } from '../data/mock'
 
 /**
  * 「新品监控」看板（朱仙问数壳里的看板清单条目）的数据岛 —— 写入当前文档的 DOM。
  *
  * 为什么要这一层：
  *   看板由 public/wenshu/np-monitor.js（她的壳里跑的经典脚本）渲染，而数字必须与分仓流程内一致
- *   （硬约束：不能用她 renderGen 默认的 bdRnd 随机数）。她的脚本读不到我们 React 模块里的 mock 对象，
+ *   （硬约束：不能用她 bdRnd 随机数）。她的脚本读不到我们 React 模块里的 mock 对象，
  *   所以把同一份 mock 序列化成 <script type="application/json" id="np-monitor-seed"> 数据岛，
  *   由 np-monitor.js 在运行时读。
  *
@@ -15,45 +15,39 @@ import { monitorNational, monitorTrend, monitorWarehouses } from '../data/mock'
  *   把 mock.ts 拉进 nodenext 项目 → mock.ts 里的 `from '../types'`（无后缀）直接 TS2835 报错；
  *   要么改 mock.ts 的 import 写法，要么改 tsconfig —— 都不如让「数据的所有者」（React 侧）自己写。
  *
- * 为什么由 main.tsx 顶层同步调用而不是 React 组件里写：
+ * 为什么由 main.tsx 顶层同步调用：
  *   她注入的 <script defer>（wenshu.js → shell-bridge.js → np-monitor.js）与我们的
  *   <script type="module" src="/src/main.tsx"> 都是 defer，**按文档顺序执行**，main.tsx 在前
- *   ⇒ 模块求值时就写好数据岛，np-monitor.js 执行时一定读得到（放进组件里则要等 React 提交，会有竞态）。
+ *   ⇒ 模块求值时就写好数据岛，np-monitor.js 执行时一定读得到。
+ *
+ * 2026-09-24 改版：看板收敛成「一个大宽表」（彬节：删掉 KPI 卡与趋势图、仓库要按茶姬真实清单铺开）
+ *   ⇒ 数据岛只剩 24 仓明细 + 全国合计，**不再带 30 天趋势**（趋势图已删）。
  */
-
-/** 趋势压缩成 [[杯量, 占比], ...]，30 天 × 9 条 ≈ 4KB（原对象形态要 3 倍） */
-const compact = (pts: TrendPoint[]): [number, number][] => pts.map((p) => [p.cups, p.share])
 
 const row = (w: MonitorWarehouseRow) => ({
   n: w.warehouseName,
   t: w.warehouseType,
-  coversStores: w.coversStores,
-  forecast: w.forecastDailyCups,
-  actual: w.actualDailyCups,
+  sub: w.subsidiary || '',
+  prov: w.province || '',
+  stores: w.coversStores,
+  fc: w.forecastDailyCups,
+  ac: w.actualDailyCups,
   dev: w.deviationPct,
-  whDays: w.warehouseSellableDays,
-  storeDays: w.storeSellableDays,
+  whd: w.warehouseSellableDays,
+  std: w.storeSellableDays,
 })
 
 export interface MonitorSeed {
   source: string
-  days: string[]
   national: ReturnType<typeof row>
   warehouses: Array<ReturnType<typeof row>>
-  trend: { national: [number, number][]; byWarehouse: Record<string, [number, number][]> }
 }
 
-export function buildMonitorSeed(trend: MonitorTrend = monitorTrend): MonitorSeed {
-  const byWarehouse: Record<string, [number, number][]> = {}
-  Object.keys(trend.byWarehouse).forEach((k) => {
-    byWarehouse[k] = compact(trend.byWarehouse[k])
-  })
+export function buildMonitorSeed(): MonitorSeed {
   return {
-    source: 'src/data/mock.ts · monitorWarehouses / monitorNational / monitorTrend',
-    days: trend.national.map((p) => p.date),
+    source: 'src/data/mock.ts · monitorWarehouses / monitorNational',
     national: row(monitorNational),
     warehouses: monitorWarehouses.map(row),
-    trend: { national: compact(trend.national), byWarehouse },
   }
 }
 

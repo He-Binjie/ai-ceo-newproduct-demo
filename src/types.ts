@@ -190,6 +190,8 @@ export interface WizardState {
 export interface MonitorWarehouseRow {
   warehouseName: string;
   warehouseType: '一级仓' | '二级仓';
+  subsidiary?: string;          // 子公司（茶姬仓清单：仓 ↔ 子公司 一一对应）
+  province?: string;            // 省
   coversStores: number;
   forecastDailyCups: number;    // 仓备货预测日均杯量 = 仓维度上新预测总量 ÷ 28
   actualDailyCups: number;      // 仓实际日均杯量 = 仓对应门店成品销售杯量 ÷ 售卖天数 N（最近 N 天、不含当天）
