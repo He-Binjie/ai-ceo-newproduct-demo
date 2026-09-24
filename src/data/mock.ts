@@ -302,8 +302,8 @@ export const regionCalcProcess = {
   ],
 };
 
-// ===== 全部门店数据（50条mock，支持分页） =====
-const storeBaseData: Array<{ id: string; name: string; wh: string; sub: string; prov: string; city: string; sales: number }> = [
+// ===== 全部门店数据（50条mock，支持分页；档位 2 起由 engine/calcInput.ts 直接消费做真算） =====
+export const storeBaseData: Array<{ id: string; name: string; wh: string; sub: string; prov: string; city: string; sales: number }> = [
   { id: '1101010005', name: '北京王府井APM店', wh: '北京二级仓', sub: '北京子公司', prov: '北京市', city: '北京市', sales: 29837 },
   { id: '44030708', name: '广东深圳龙岗摩尔城店', wh: '广东一级仓', sub: '广东子公司', prov: '广东省', city: '深圳市', sales: 36578 },
   { id: '46010612', name: '海南海口阳光城店', wh: '海南二级仓', sub: '海南子公司', prov: '海南省', city: '海口市', sales: 30301 },
@@ -463,6 +463,16 @@ export const allWarehouseSummary = [
     { name: '冷冻生椰乳', allocationQty: 2345, extraStock: 1710, total: 4055, orderQty: 4060, unit: '瓶' },
     { name: '东方美人乌龙茶-A', allocationQty: 0, extraStock: 691, total: 691, orderQty: 693, unit: '箱' },
   ]},
+];
+
+// ===== 供应商分配底表（mock：只填份额 + MOQ；份额/MOQ 可在页面内联改 → 触发真算） =====
+// 「合并品名」维度聚合，仅 Step 7 才拆到 SKU / 规格 —— 对齐 PRD §4.2.4 / §4.10
+export const supplierRoot: Array<{ merged: string; rows: Array<[string, number]> }> = [
+  { merged: '安溪铁观音', rows: [['安溪铁观音-1 / 福建安溪茶业A', 60], ['安溪铁观音-2 / 云南普洱供应链B', 40]] },
+  { merged: '莲雾苹果汁', rows: [['莲雾苹果汁 / 海南果汁工厂C', 100]] },
+  { merged: '冷冻生椰乳', rows: [['冷冻生椰乳 / 椰树供应链D', 70], ['冷冻生椰乳 / 海南椰品E', 30]] },
+  { merged: '东方美人乌龙茶', rows: [['东方美人乌龙茶-A / 台湾茶业F', 100]] },
+  { merged: '冷冻凤梨汁', rows: [['冷冻凤梨汁 / 新供应商G（虚拟项）', 100]] },
 ];
 
 // ================= V7.6 新增（9/22 罗雄会议）：监控看板 / 参数面板 =================

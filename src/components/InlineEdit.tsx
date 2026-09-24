@@ -1,6 +1,7 @@
-// B-4：表格内联调参（档位 1 · 演示态）
+// B-4：表格内联调参（档位 2 · 轻量真算）
 // 规则：点击数字 → 原地输入框 → Enter/失焦提交、Esc 取消；逐参数校验；提交写变更日志 + 顶部提示
-// 演示态约定：值会在页面上生效（用户能看到自己改的结果），但不重算下游数字；真算需档位 2 重写引擎
+// 档位 2 约定：值写入本模块级 store 后，engine/calcInput.ts 的 useCalc() 按 store 版本号重算物料量 /
+// 汇总到仓 / 偏差率 / 检测 —— 页面数字全部来自引擎，不再有「演示态（未重算）」的区块。
 // 依据：modules/新品分仓-Demo页面调参交互规格-B-20260923.md §2.1–2.6
 //
 // §2.1「三入口同源」实现：页面内联 / 参数面板 / 对话 三处共用本文件的模块级 value store
@@ -217,7 +218,7 @@ export function EditableNumber({
     showToast(
       floorWarn
         ? `注意：${param} ${scope} → ${fmt(next)}：小于 1.0，按 PRD 兜底规则将取 1.0（宁多勿缺）｜将影响 ${effect}`
-        : `✔ ${param} ${scope} → ${fmt(next)}：已按新值更新（演示态，未真实重算）｜将影响 ${effect}`,
+        : `✔ ${param} ${scope} → ${fmt(next)}：已按新值重算下游（物料量 → 汇总到仓 → 偏差率 → 预警）｜影响 ${effect}`,
     );
   };
 
@@ -264,8 +265,8 @@ export function ChangeLogPanel() {
         <button className="export-btn" onClick={clearChangeLog} disabled={!log.length}>清空</button>
       </div>
       <div className="changelog-note">
-        演示态：改动会<b>记入本日志并即时显示在表格里</b>，但<b>不重算下游数字</b>（真算需按 B 规格档位 2 重写计算引擎）。
-        来源三值：页面 / 底表 / 对话。
+        <b>档位 2 · 轻量真算</b>：改动写入共享值 store 后，物料量 / 汇总到仓 / 偏差率 / 检测<b>全部按 PRD 公式重算</b>（无「演示态」占位数字）。
+        来源三值：页面 / 底表 / 对话；底表与上新监控看板仍为 mock 数据。
       </div>
       {log.length === 0 ? (
         <div className="changelog-empty">暂无改动。在右侧任意明细表里点数字即可直接改（区域系数 / 备货系数 / 开封效期 / 损耗率 / W1-W4 / 供应商份额 / MOQ / 三个天数 N）。</div>

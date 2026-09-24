@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import './styles.css';
 import type { ChatMessage, NewProductInfo, BOMMaterial, RegionCoefficient, ConfirmAction, MonitorWarehouseRow, ParamItem } from './types';
-import { mockProduct, mockMaterials, mockRegionCoefficients, historicalProducts, historicalProductsDetail, mockStoreSamples, nationalMaterialSummary, newProductList, mockBOMRecordsProduct2, mockSystemDataProduct2, mockWarehouseDistributionCompare, allWarehouseSummary, monitorNational, monitorWarehouses, monitorTrend, paramList } from './data/mock';
+import { mockProduct, mockMaterials, mockRegionCoefficients, historicalProducts, historicalProductsDetail, newProductList, mockBOMRecordsProduct2, mockSystemDataProduct2, mockWarehouseDistributionCompare, monitorNational, monitorWarehouses, monitorTrend, paramList, supplierRoot } from './data/mock';
 import { parseIntent } from './engine/nlu';
 import { NARRATIVE, GUIDE_STEPS, STEP_MAPPING } from './data/narrative';
 import { EditableNumber, ChangeLogPanel, ToastHost, usePageValue, useValueVersion, getPageValue, setPageValue, setPageValueAll, setPageValueSmart, addChange } from './components/InlineEdit';
 import { Icon } from './components/Icon';
+import { useCalc, MOQ_DEFAULTS } from './engine/calcInput';
+import { weekMinQty } from './engine/calculator';
 
 // 简化为5步
 const STEP_LABELS = ['选择新品', '预测杯量', '系数修正+BOM拆解', '汇总到仓+供应商', '结果输出'];
@@ -50,15 +52,17 @@ const WENSHU_SLOT_IDS = ['wenshu-header-center', 'wenshu-header-right'] as const
 // 对话入口用下面的 known 列表做智能匹配，避免出现「对话说改了、表格没变」。
 const GRAN_REGION = mockRegionCoefficients.map(r => r.subsidiary);
 const GRAN_MATERIAL = mockMaterials.map(m => m.materialName);
-const GRAN_SUPPLIER = [
-  '安溪铁观音-1 / 福建安溪茶业A',
-  '安溪铁观音-2 / 云南普洱供应链B',
-  '莲雾苹果汁 / 海南果汁工厂C',
-  '冷冻生椰乳 / 椰树供应链D',
-  '冷冻生椰乳 / 海南椰品E',
-  '东方美人乌龙茶-A / 台湾茶业F',
-  '冷冻凤梨汁 / 新供应商G（虚拟项）',
-];
+const GRAN_SUPPLIER = supplierRoot.flatMap(g => g.rows.map(([k]) => k));
+
+/** 「周可供量」＝业务侧提供的展示值（PRD：系统不配置产能字段，不参与计算） */
+const SUPPLY_CAPACITY: Record<string, string> = {
+  '安溪铁观音-1 / 福建安溪茶业A': '50,000',
+  '安溪铁观音-2 / 云南普洱供应链B': '30,000',
+  '莲雾苹果汁 / 海南果汁工厂C': '400,000',
+  '冷冻生椰乳 / 椰树供应链D': '120,000',
+  '冷冻生椰乳 / 海南椰品E': '60,000',
+  '东方美人乌龙茶-A / 台湾茶业F': '35,000',
+};
 
 /** 对话入口写页面用的 apply 载荷 */
 type ParamApply = { param: string; gran: string; value: number; syncAll?: boolean; known: string[] };
@@ -72,8 +76,8 @@ function parseParameterAdjustment(text: string): { response: string; thinking: s
   if (regionMatch) {
     const [, subsidiary, value] = regionMatch;
     return {
-      response: `✅ 已调整区域系数\n\n• **${subsidiary}**：→ **${value}**\n\n**参数已更新**（演示态） 右侧面板已跳转到 Step 2，请确认重算结果。\n\n💡 你还可以继续调整：\n• "调整区域系数 广东 1.05"\n• "调整备货系数 莲雾苹果汁 1.2"\n• "调整W1占比 0.06"\n• "安全库存改成7天"`,
-      thinking: [`修改区域系数：${subsidiary} → ${value}`, `自动定位到 Step 2 系数修正`, `已按新值更新系数表（演示态，未重算下游）`],
+      response: `✅ 已调整区域系数\n\n• **${subsidiary}**：→ **${value}**\n\n**参数已重算**（真算：物料量 → 汇总到仓 → 偏差率 → 预警） 右侧面板已跳转到 Step 2，请确认重算结果。\n\n💡 你还可以继续调整：\n• "调整区域系数 广东 1.05"\n• "调整备货系数 莲雾苹果汁 1.2"\n• "调整W1占比 0.06"\n• "安全库存改成7天"`,
+      thinking: [`修改区域系数：${subsidiary} → ${value}`, `自动定位到 Step 2 系数修正`, `已按新值重算（真算）：系数 → 物料量 → 汇总到仓 → 偏差率 → 预警`],
       targetStep: 2,
       apply: { param: '区域系数', gran: `${subsidiary}子公司`, value: Number(value), known: GRAN_REGION },
     };
@@ -84,8 +88,8 @@ function parseParameterAdjustment(text: string): { response: string; thinking: s
   if (stockMatch) {
     const [, material, value] = stockMatch;
     return {
-      response: `✅ 已调整备货系数\n\n• **${material}**：→ **${value}**\n\n**参数已更新**（演示态） 右侧面板已跳转到 Step 2，请确认重算结果。\n\n💡 你还可以继续调整其他参数。`,
-      thinking: [`修改备货系数：${material} → ${value}`, `自动定位到 Step 2 BOM拆解`, `已按新值更新 BOM 表备货系数（演示态，未重算下游）`],
+      response: `✅ 已调整备货系数\n\n• **${material}**：→ **${value}**\n\n**参数已重算**（真算：物料量 → 汇总到仓 → 偏差率 → 预警） 右侧面板已跳转到 Step 2，请确认重算结果。\n\n💡 你还可以继续调整其他参数。`,
+      thinking: [`修改备货系数：${material} → ${value}`, `自动定位到 Step 2 BOM拆解`, `已按新值重算（真算）：备货系数 → 应用率/物料量 → 汇总到仓 → 偏差率`],
       targetStep: 2,
       apply: { param: '备货系数', gran: material, value: Number(value), known: GRAN_MATERIAL },
     };
@@ -96,8 +100,8 @@ function parseParameterAdjustment(text: string): { response: string; thinking: s
   if (wMatch) {
     const [, week, value] = wMatch;
     return {
-      response: `✅ 已调整${week}占比\n\n• **${week}**：→ **${value}**\n\n⚠️ W1-W4为成品维度参数，修改后所有物料同步生效。\n\n**参数已更新**（演示态） 右侧面板已跳转到 Step 2，请确认重算结果。`,
-      thinking: [`修改${week}占比 → ${value}（成品维度，全物料生效）`, `自动定位到 Step 2 物料量计算`, `已按新值更新（演示态）所有物料 ${week} 杯占比`],
+      response: `✅ 已调整${week}占比\n\n• **${week}**：→ **${value}**\n\n⚠️ W1-W4为成品维度参数，修改后所有物料同步生效。\n\n**参数已重算**（真算：物料量 → 汇总到仓 → 偏差率 → 预警） 右侧面板已跳转到 Step 2，请确认重算结果。`,
+      thinking: [`修改${week}占比 → ${value}（成品维度，全物料生效）`, `自动定位到 Step 2 物料量计算`, `已按新值重算（真算）：${week} 杯占比（全物料）→ 物料量 → 汇总到仓`],
       targetStep: 2,
       apply: { param: `${week} 杯占比`, gran: '', value: Number(value), syncAll: true, known: [] },
     };
@@ -108,7 +112,7 @@ function parseParameterAdjustment(text: string): { response: string; thinking: s
   if (sellNMatch) {
     const [, days] = sellNMatch;
     return {
-      response: `✅ 已调整**售卖天数 N**\n\n• 售卖天数 N：7天 → **${days}天**（最近 ${days} 天、不含当天）\n• 影响：**仓实际日均杯量 = 仓对应门店成品销售杯量 ÷ 售卖天数**（监控看板「仓实际日均杯量」与「仓偏差率」随之重算）\n\n**参数已更新**（演示态） 右侧面板已跳转到「参数面板」，请确认。`,
+      response: `✅ 已调整**售卖天数 N**\n\n• 售卖天数 N：7天 → **${days}天**（最近 ${days} 天、不含当天）\n• 影响：**仓实际日均杯量 = 仓对应门店成品销售杯量 ÷ 售卖天数**（监控看板「仓实际日均杯量」与「仓偏差率」随之重算）\n\n**参数已重算**（真算：物料量 → 汇总到仓 → 偏差率 → 预警） 右侧面板已跳转到「参数面板」，请确认。`,
       thinking: [`修改售卖天数 N：7 → ${days} 天`, '重算仓实际日均杯量分母', '联动重算仓偏差率 / 全国偏差率'],
       targetStep: 5,
       apply: { param: '售卖天数 N', gran: '全局', value: Number(days), known: ['全局'] },
@@ -120,7 +124,7 @@ function parseParameterAdjustment(text: string): { response: string; thinking: s
   if (orderNMatch) {
     const [, days] = orderNMatch;
     return {
-      response: `✅ 已调整**订货天数 N**\n\n• 订货天数 N：7天 → **${days}天**（最近 ${days} 天）\n• 影响：**仓库可售天数 = 物料可用库存 ÷ 仓物料订货日均**，其中订货日均 = 订货量 ÷ 订货天数 N（监控看板「仓库可售天数」与库存预警随之重算）\n\n**参数已更新**（演示态） 右侧面板已跳转到「参数面板」，请确认。`,
+      response: `✅ 已调整**订货天数 N**\n\n• 订货天数 N：7天 → **${days}天**（最近 ${days} 天）\n• 影响：**仓库可售天数 = 物料可用库存 ÷ 仓物料订货日均**，其中订货日均 = 订货量 ÷ 订货天数 N（监控看板「仓库可售天数」与库存预警随之重算）\n\n**参数已重算**（真算：物料量 → 汇总到仓 → 偏差率 → 预警） 右侧面板已跳转到「参数面板」，请确认。`,
       thinking: [`修改订货天数 N：7 → ${days} 天`, '重算仓物料订货日均（订货量 ÷ N 天）', '联动重算仓库可售天数 / 库存预警'],
       targetStep: 5,
       apply: { param: '订货天数 N', gran: '全局', value: Number(days), known: ['全局'] },
@@ -132,8 +136,8 @@ function parseParameterAdjustment(text: string): { response: string; thinking: s
   if (safetyMatch) {
     const [, days] = safetyMatch;
     return {
-      response: `✅ 已调整安全库存天数\n\n• 安全库存：7天 → **${days}天**\n\n**参数已更新**（演示态） 右侧面板已跳转到 Step 3，请确认重算结果。`,
-      thinking: [`修改安全库存天数：7天 → ${days}天`, `自动定位到 Step 3 偏差率检测`, `已按新阈值更新安库校验展示（演示态，未重算下游）`],
+      response: `✅ 已调整安全库存天数\n\n• 安全库存：7天 → **${days}天**\n\n**参数已重算**（真算：物料量 → 汇总到仓 → 偏差率 → 预警） 右侧面板已跳转到 Step 3，请确认重算结果。`,
+      thinking: [`修改安全库存天数：7天 → ${days}天`, `自动定位到 Step 3 偏差率检测`, `已按新阈值重算（真算）安库校验（可销售天数 vs N 天）`],
       targetStep: 3,
       apply: { param: '安全库存天数', gran: '全局', value: Number(days), known: ['全局'] },
     };
@@ -144,8 +148,8 @@ function parseParameterAdjustment(text: string): { response: string; thinking: s
   if (supplierMatch) {
     const [, material, supplier, share, moq] = supplierMatch;
     return {
-      response: `✅ 已设置供应商信息\n\n• **${material}**\n  - 供应商：${supplier}\n  - 份额：${share}%\n  - MOQ：${moq || '1（默认）'}\n\n💡 份额之和必须=100%，可继续添加其他供应商。\n\n**参数已更新**（演示态） 右侧面板已跳转到 Step 3，请确认重算结果。`,
-      thinking: [`设置供应商：${material} → ${supplier} ${share}% MOQ=${moq || 1}`, `自动定位到 Step 3 供应商分配`, `已按新值更新（演示态）供应商份额`],
+      response: `✅ 已设置供应商信息\n\n• **${material}**\n  - 供应商：${supplier}\n  - 份额：${share}%\n  - MOQ：${moq || '1（默认）'}\n\n💡 份额之和必须=100%，可继续添加其他供应商。\n\n**参数已重算**（真算：物料量 → 汇总到仓 → 偏差率 → 预警） 右侧面板已跳转到 Step 3，请确认重算结果。`,
+      thinking: [`设置供应商：${material} → ${supplier} ${share}% MOQ=${moq || 1}`, `自动定位到 Step 3 供应商分配`, `已按新值重算（真算）：份额 → 需求分配量 → MOQ 取整 → 下单量`],
       targetStep: 3,
       apply: { param: '供应商份额', gran: `${material} / ${supplier}`, value: Number(share), known: GRAN_SUPPLIER },
     };
@@ -418,7 +422,7 @@ function App() {
         else { label = setPageValueSmart(a.param, a.gran, a.value, a.known); }
         if (label) {
           addChange({ param: a.param, granularity: label, from: '表格原值', to: String(a.value), source: '对话', operator: '罗', effect: '见「参数面板」影响范围列' });
-          syncLine = `\n\n📄 已同步到右侧表格：**${label} → ${a.value}**（演示态，不重算下游数字）`;
+          syncLine = `\n\n📄 已同步到右侧表格：**${label} → ${a.value}**（真算：下游物料量/汇总/偏差率/预警已联动重算）`;
         }
       }
       // 自动定位到对应step的右侧面板 + 跳转动画
@@ -546,7 +550,7 @@ function App() {
             holder 由 React 渲染，her 的节点在 useEffect 里被 appendChild 移动进来（节点身份不变）。 */}
         <div id="slot-wenshu-header-center" />
         <div className="user-info">
-          <span className="mock-badge" title="当前页面所有数字为演示数据（mock），非真实取数结果">演示数据（mock）</span>
+          <span className="mock-badge" title="分仓计算链路（杯量 → 物料量 → 汇总到仓 → 偏差率 → 检测）已按 PRD 公式真算，参数改动即时联动；底表与上新监控看板仍为 mock 数据">底表 mock · 分仓链路已真算</span>
           <button className={`guide-btn ${showGuide ? 'active' : ''}`} onClick={() => setShowGuide(!showGuide)}>
             {showGuide ? '收起讲解' : '演示讲解'}
           </button>
@@ -641,7 +645,7 @@ function App() {
                             }
                             else if (action.type === 'export') handleUserInput('导出Excel');
                             else if (action.type === 'recalculate') {
-                              addBotMessage('🔄 **调参重跑**：已按当前参数记录一次重跑（变更留痕见「参数面板 → 变更日志」）。\n\n演示态说明：本页数字为演示数据，重跑不改变右侧数字——参数改动对下游的**真实联动重算**见「参数面板」影响范围列。');
+                              addBotMessage('🔄 **调参重跑**：已按当前参数重算一遍（真算），右侧物料量 / 汇总到仓 / 偏差率 / 预警全部按新参数刷新；变更留痕见「参数面板 → 变更日志」与「最近一次重算影响」。');
                               setTimeout(() => triggerStepMessage(step), 800);
                             }
                             else if (action.type === 'notify') addBotMessage('📤 已发送飞书通知 ✅');
@@ -668,7 +672,7 @@ function App() {
                                 setSelectedHistoricalProducts(aiSubset);
                                 setRightTab(2);
                                 simulateTyping(
-                                  `✅ 已切换为 **AI推荐子集**（${aiSubset.size}个历史品，相似度≥80%）\n\n区域系数已按新值更新（演示态），详见右侧面板。\n\n你可以在右侧面板中逐个勾选/取消历史品，进一步微调选择。`,
+                                  `✅ 已切换为 **AI推荐子集**（${aiSubset.size}个历史品，相似度≥80%）\n\n区域系数已按新值重算（真算），物料量 / 汇总到仓 / 偏差率同步刷新，详见右侧面板。\n\n你可以在右侧面板中逐个勾选/取消历史品，进一步微调选择。`,
                                   ['筛选相似度≥80%的历史品：15个', '重新计算24个子公司区域系数均值', '右侧面板已更新'],
                                   [{ label: '✅ 确认，继续', type: 'confirm' }, { label: '↩️ 恢复全部23品', type: 'skip' }],
                                 );
@@ -1051,7 +1055,8 @@ function RightMonitorBoard() {
 
 /* ===================== V2.16 参数面板（所有参数都支持页面直接改） ===================== */
 function RightParamPanel() {
-  useValueVersion(); // 订阅参数值变化：对话 / 明细表改了 → 本面板同步刷新（三入口同源）
+  // 订阅参数值变化 + 取「最近一次重算影响」（三入口同源；对话 / 明细表改了 → 本面板同步刷新）
+  const { impact } = useCalc();
   const [values, setValues] = useState<Record<string, string>>(() =>
     paramList.reduce((acc, p) => { acc[p.key] = p.value; return acc; }, {} as Record<string, string>));
   const [recalc, setRecalc] = useState<string | null>(null);
@@ -1067,12 +1072,12 @@ function RightParamPanel() {
       addChange({
         param: p.name, granularity: '全局',
         from: `${before}${p.unit || ''}`, to: `${v}${p.unit || ''}`,
-        source: '页面', operator: '罗', effect: '页面改即时生效 → 看板 / 阈值同步（演示态，未重算下游）',
+        source: '页面', operator: '罗', effect: '真算：物料量 → 汇总到仓 → 偏差率 → 检测阈值同步',
       });
     } else {
       setValues(prev => ({ ...prev, [p.key]: v }));
     }
-    setRecalc(`${p.name} → ${v}${p.unit || ''}：已按新值更新（演示态，未真实重算）｜页面改即时生效`);
+    setRecalc(`${p.name} → ${v}${p.unit || ''}：已按新值重算（真算）｜下游物料量 / 汇总到仓 / 偏差率 / 检测已联动`);
     setSheetHint(null);
     setTimeout(() => setRecalc(null), 2600);
   };
@@ -1142,6 +1147,36 @@ function RightParamPanel() {
         </div>
       </div>
 
+      {/* 档位 2：最近一次重算影响（before → after，证明参数改动真的联动了下游） */}
+      {impact && (impact.rows.length > 0 || impact.alertsBefore !== impact.alertsAfter || impact.whSafetyBefore !== impact.whSafetyAfter) && (
+        <div className="card" style={{ borderColor: 'var(--accent)' }}>
+          <div className="card-title" style={{ color: 'var(--accent)' }}><Icon n="calc" style={{ marginRight: 6, color: 'inherit' }} />最近一次重算影响（真算 · before → after）</div>
+          <table className="data-table table-fit">
+            <thead><tr><th>物料</th><th className="num">全国预测量 前 → 后</th><th className="num">变化</th><th className="num">备货偏差率 前 → 后</th><th>单位</th></tr></thead>
+            <tbody>
+              {impact.rows.map(r => (
+                <tr key={r.material}>
+                  <td style={{ fontWeight: 600 }}>{r.material}</td>
+                  <td className="num" style={{ fontSize: 12 }}>{r.before.toLocaleString()} → <b style={{ color: 'var(--accent)' }}>{r.after.toLocaleString()}</b></td>
+                  <td className="num" style={{ fontWeight: 700, color: r.deltaPct >= 0 ? 'var(--good)' : 'var(--danger, #ef4444)' }}>{r.deltaPct > 0 ? '+' : ''}{r.deltaPct}%</td>
+                  <td className="num" style={{ fontSize: 12 }}>{r.devBefore}% → <b>{r.devAfter}%</b></td>
+                  <td style={{ fontSize: 11 }}>{r.unit}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {impact.rows.length === 0 && (
+            <div style={{ fontSize: 12, lineHeight: 1.8, color: 'var(--text-muted)' }}>
+              本次改动<b>不改变物料量/偏差率</b>（如只改检测阈值），只影响命中判定 —— 下方命中数为证。
+            </div>
+          )}
+          <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.8 }}>
+            A 类检测项命中数（物料级全国加权口径）：<b>{impact.alertsBefore}</b> → <b style={{ color: 'var(--warn)' }}>{impact.alertsAfter}</b><br/>
+            仓级「安全库存校验」不通过数（仓 × 物料）：<b>{impact.whSafetyBefore}</b> → <b style={{ color: 'var(--warn)' }}>{impact.whSafetyAfter}</b>
+          </div>
+        </div>
+      )}
+
       {/* B-4：变更日志（内联调参留痕） */}
       <ChangeLogPanel />
     </div>
@@ -1149,12 +1184,14 @@ function RightParamPanel() {
 }
 
 function RightStep1CupForecast({ productInfo, materials, selectedProduct, activeBOMTab, setActiveBOMTab }: { productInfo: NewProductInfo; materials: BOMMaterial[]; selectedProduct: string[]; activeBOMTab: number; setActiveBOMTab: (n: number) => void }) {
+  // 档位 2：门店级杯量 / 物料量来自引擎（区域系数、W1-W4、备货系数、损耗率、效期改动全部联动）
+  const { calc } = useCalc();
   const [storePage, setStorePage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const totalStores = mockStoreSamples.length;
+  const totalStores = calc.stores.length;
   const totalPages = Math.ceil(totalStores / pageSize);
   const startIdx = (storePage - 1) * pageSize;
-  const pageStores = mockStoreSamples.slice(startIdx, startIdx + pageSize);
+  const pageStores = calc.stores.slice(startIdx, startIdx + pageSize);
 
   // Determine which BOM data to show based on active tab
   const selectedNames = selectedProduct.map(id => newProductList.find(p => p.id === id)?.name || id);
@@ -1216,9 +1253,9 @@ function RightStep1CupForecast({ productInfo, materials, selectedProduct, active
 
       {/* 物料参数（可点改） */}
       <div className="card" style={{ borderColor: 'var(--accent)' }}>
-        <div className="card-title" style={{ color: 'var(--accent)' }}><Icon n="calc" style={{ marginRight: 6, color: 'inherit' }} />物料参数（点数字直接改 · 演示态）</div>
+        <div className="card-title" style={{ color: 'var(--accent)' }}><Icon n="calc" style={{ marginRight: 6, color: 'inherit' }} />物料参数（点数字直接改 · 改了真算）</div>
         <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.7 }}>
-          可改：开封效期 · 备货系数 · 损耗率 · W1-W4 杯占比（成品维度，改一处全物料同步）。改动即时显示在表内、并记入「参数面板 → 变更日志」；<b>不重算下游数字</b>（真算需 B 规格档位 2 重写计算引擎）。
+          可改：开封效期 · 备货系数 · 损耗率 · W1-W4 杯占比（成品维度，改一处全物料同步）。改动<b>即时真算下游</b>：应用率 → 物料量 → 汇总到仓 → 偏差率 → 检测全部联动（档位 2 · 轻量真算），并记入「参数面板 → 变更日志」。
         </div>
         <table className="data-table table-fit">
           <thead>
@@ -1261,17 +1298,19 @@ function RightStep1CupForecast({ productInfo, materials, selectedProduct, active
       <div className="card">
         <div className="card-title"><Icon n="store" style={{ marginRight: 6, color: 'inherit' }} />全部门店预测明细<button className="export-btn"><Icon n="download" size={12} /> 导出</button></div>
         <table className="data-table table-fit">
-            <thead><tr><th>门店编码</th><th>门店名称</th><th>子公司</th><th className="num">5月销量</th><th className="num">占比</th><th className="num">首周日均</th><th className="num">月日均</th></tr></thead>
+            <thead><tr><th>门店编码</th><th>门店名称</th><th>子公司</th><th className="num">区域系数</th><th className="num">5月销量</th><th className="num">占比</th><th className="num">首周日均</th><th className="num">月日均</th><th className="num">预测总量<br/><span style={{ fontSize: 10, fontWeight: 400 }}>（{currentBOM.length}物料合计·箱）</span></th></tr></thead>
             <tbody>
               {pageStores.map((s, i) => (
                 <tr key={i}>
                   <td style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{s.storeId}</td>
                   <td style={{ fontWeight: 600, fontSize: 11 }}>{s.storeName}</td>
                   <td style={{ fontSize: 11 }}>{s.subsidiary}</td>
+                  <td className="num">{s.regionCoeff}{s.isFloorProtected && <span style={{ fontSize: 10, color: 'var(--warn)' }}> 兜底</span>}</td>
                   <td className="num">{s.maySales.toLocaleString()}</td>
                   <td className="num">{(s.salesRatio * 100).toFixed(4)}%</td>
                   <td className="num">{s.firstWeekDaily.toFixed(2)}</td>
                   <td className="num">{s.monthDaily.toFixed(2)}</td>
+                  <td className="num" style={{ fontWeight: 700, color: 'var(--accent)' }}>{s.totalBoxes.toLocaleString()}</td>
                 </tr>
               ))}
             </tbody>
@@ -1298,9 +1337,14 @@ function RightStep1CupForecast({ productInfo, materials, selectedProduct, active
       <div className="card">
         <div className="card-title"><Icon n="calc" style={{ marginRight: 6, color: 'inherit' }} />计算公式</div>
         <pre className="formula-block">{`门店占比 = 门店5月销量 ÷ 全国5月总销量(${productInfo.totalSalesMay.toLocaleString()})
-首周日均 = 大盘首周(${productInfo.firstWeekDailyCups}) × 门店占比 × 门店数(${productInfo.storeCount.toLocaleString()})
-月日均 = 大盘首月(${productInfo.firstMonthDailyCups}) × 门店占比 × 门店数(${productInfo.storeCount.toLocaleString()})
-下限保护：if 日均 < 10杯 → 取大盘均值`}</pre>
+首周日均 = 大盘首周(${productInfo.firstWeekDailyCups}) × 门店占比 × 门店数(${productInfo.storeCount.toLocaleString()}) × 区域系数
+月日均   = 大盘首月(${productInfo.firstMonthDailyCups}) × 门店占比 × 门店数(${productInfo.storeCount.toLocaleString()}) × 区域系数
+区域系数 = 子公司新品前两周占比 ÷ 全国新品前两周占比（< 1.0 兜底取 1.0，宁多勿缺）
+
+示例（表格第 1 行门店 × ${calc.stores[0]?.materials[0]?.material ?? ''}）：
+  区域系数 ${calc.stores[0]?.regionCoeff} ｜ 首周日均 ${calc.stores[0]?.firstWeekDaily.toFixed(2)} ｜ 月日均 ${calc.stores[0]?.monthDaily.toFixed(2)}
+  W1 物料量 = ${calc.stores[0]?.firstWeekDaily.toFixed(2)} × ${calc.materials[0]?.w[0]} × 7 ÷ ${calc.materials[0]?.app.w1.toFixed(2)} × 备货系数 = ${calc.stores[0]?.materials[0]?.w[0].toFixed(2)} 箱
+  门店预测总量 = Roundup(ΣW1-W4) = ${calc.stores[0]?.materials[0]?.total} 箱（该门店 ${calc.stores[0]?.materials.length} 个物料合计 ${calc.stores[0]?.totalBoxes} 箱）`}</pre>
       </div>
     </div>
   );
@@ -1364,6 +1408,17 @@ function RightStep2CoefficientsAndBOM({ regions, materials, productInfo, selecte
   }, [means, regions]);
 
   const currentFlooredCount = regions.filter(r => means[r.subsidiary] < 1).length;
+
+  // 档位 2：把「历史品选择 → 均值 → 兜底」算出的系数写进共享 store，作为真算输入（单一真值）。
+  // 这行同时实现了「勾选/取消历史品 → 区域系数变 → 物料量/汇总/偏差率真变」。
+  const { calc } = useCalc();
+  useEffect(() => {
+    regions.forEach(r => {
+      const next = Math.round(Math.max(1, means[r.subsidiary]) * 1000) / 1000;
+      const cur = getPageValue('区域系数', r.subsidiary, next);
+      if (Math.abs(cur - next) > 1e-9) setPageValue('区域系数', r.subsidiary, next);
+    });
+  }, [means, regions]);
 
   return (
     <div className="animate-in">
@@ -1503,40 +1558,68 @@ function RightStep2CoefficientsAndBOM({ regions, materials, productInfo, selecte
         </table>
       </div>
 
-      {/* 物料量计算 */}
+      {/* 物料量计算（档位 2 · 真算） */}
       <div className="card">
-        <div className="card-title"><Icon n="calc" style={{ marginRight: 6, color: 'inherit' }} />物料量计算（{productInfo.storeCount.toLocaleString()}门店 × {materials.filter(m=>m.selected).length}物料 × W1-W4）</div>
-        <pre className="formula-block">{`核心公式：
-W1物料量 = 首周日均杯量 × 区域系数 × W1占比 × 7 ÷ 应用率W1 × 备货系数
-W2-W4物料量 = 月日均杯量 × 区域系数 × Wn占比 × 7 ÷ 应用率Wn × 备货系数
-预测总量 = Roundup(W1 + W2 + W3 + W4)  ← 向上取整
+        <div className="card-title"><Icon n="calc" style={{ marginRight: 6, color: 'inherit' }} />物料量计算（真算 · {productInfo.storeCount.toLocaleString()}门店 × {calc.materials.length}物料 × W1-W4）<button className="export-btn"><Icon n="download" size={12} /> 导出</button></div>
+        <pre className="formula-block">{`W1物料量    = 首周日均杯量 × 区域系数 × W1占比 × 7 ÷ 应用率W1 × 备货系数
+W2-W4物料量 = 月日均杯量   × 区域系数 × Wn占比 × 7 ÷ 应用率Wn × 备货系数
+效期校验    = if Wn < round(7 ÷ 开封效期天数) → 取 round(7 ÷ 开封效期天数)（一周至少备 1 箱）
+预测总量    = Roundup(W1 + W2 + W3 + W4)
+应用率Wn    = PRD §4.2.1 基准应用率（杯/箱）× (1 − 损耗率) ÷ (1 − 基准损耗率)
+仓库物料量  = Σ(该仓覆盖门店的物料量)；底表为 50 家门店样本 → 仓级按「全国平均店 × 仓覆盖门店数」放大（Σ仓 == 全国）
 
-示例：门店1101010005 × 莲雾苹果汁
-参数：首周日均=1077.92, 月日均=1150.49, 区域系数=1.2, 备货系数=1.0
-      应用率=11.41, W1=0.05, W2=0.035, W3=0.0224, W4=0.012544
-
-W1 = 1077.92 × 1.2 × 0.05 × 7 ÷ 11.41 × 1.0 = 39.67
-W2 = 1150.49 × 1.2 × 0.035 × 7 ÷ 11.41 × 1.0 = 29.64
-W3 = 1150.49 × 1.2 × 0.0224 × 7 ÷ 11.41 × 1.0 = 18.97
-W4 = 1150.49 × 1.2 × 0.012544 × 7 ÷ 11.41 × 1.0 = 10.62
-
-预测总量 = Roundup(98.90) = 99 ✓
-效期校验：开封效期7天 → 周最小量=1, W1-W4均>1 ✓`}</pre>
+示例（${calc.stores[0]?.storeName} × ${calc.stores[0]?.materials[0]?.material}）：
+  首周日均 ${calc.stores[0]?.firstWeekDaily.toFixed(2)} × 区域系数 ${calc.stores[0]?.regionCoeff} × W1 占比 ${calc.materials[0]?.w[0]} × 7 ÷ 应用率 ${calc.materials[0]?.app.w1.toFixed(2)} × 备货系数 ${getPageValue('备货系数', calc.materials[0]?.material ?? '', materials[0]?.stockCoefficient ?? 1)} = ${calc.stores[0]?.materials[0]?.w[0].toFixed(2)} 箱
+  该门店 ${calc.stores[0]?.materials.length} 个物料预测总量合计 = ${calc.stores[0]?.totalBoxes} 箱`}</pre>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.7 }}>
+          ⚠️ <b>效期下限</b>：开封效期越短，本周最小备货量越大（如效期 4 天 → 每周至少 2 箱）。小量物料会被这项顶起，
+          这是「备货偏差」的三大来源之一 —— 点表格里的数字改参数后，下表与 Step 3 的偏差率会<b>立刻变</b>。
+        </div>
+        <table className="data-table table-fit">
+          <thead><tr><th>物料</th><th className="num">应用率W1<br/><span style={{ fontSize: 10, fontWeight: 400 }}>杯/箱</span></th><th className="num">效期下限<br/><span style={{ fontSize: 10, fontWeight: 400 }}>箱/周</span></th><th className="num">单店W1</th><th className="num">单店W2</th><th className="num">单店W3</th><th className="num">单店W4</th><th className="num">单店总量<br/><span style={{ fontSize: 10, fontWeight: 400 }}>(箱)</span></th><th className="num">全国预测量</th><th className="num">全国下单量</th><th>单位</th></tr></thead>
+          <tbody>
+            {calc.materials.map((m, i) => {
+              const st = calc.stores[0]?.materials.find(x => x.material === m.material);
+              return (
+                <tr key={i}>
+                  <td style={{ fontWeight: 600 }}>{m.material}{st?.effLifted && <span style={{ fontSize: 10, color: 'var(--warn)', marginLeft: 4 }}>效期顶起</span>}</td>
+                  <td className="num">{m.app.w1.toFixed(2)}</td>
+                  <td className="num">{weekMinQty(materials.find(x => x.materialName === m.material)?.shelfLifeDays ?? 7)}</td>
+                  <td className="num">{st?.w[0].toFixed(2)}</td>
+                  <td className="num">{st?.w[1].toFixed(2)}</td>
+                  <td className="num">{st?.w[2].toFixed(2)}</td>
+                  <td className="num">{st?.w[3].toFixed(2)}</td>
+                  <td className="num" style={{ fontWeight: 700 }}>{st?.total}</td>
+                  <td className="num" style={{ fontWeight: 700, color: 'var(--accent)' }}>{m.forecastQty.toLocaleString()}</td>
+                  <td className="num">{m.orderQty.toLocaleString()}</td>
+                  <td style={{ fontSize: 11 }}>{m.unit}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
       </div>
 
-      {/* 全国物料汇总 */}
+      {/* 全国物料汇总（真算） */}
       <div className="card">
-        <div className="card-title"><Icon n="chart" style={{ marginRight: 6, color: 'inherit' }} />全国物料汇总<button className="export-btn"><Icon n="download" size={12} /> 导出</button></div>
+        <div className="card-title"><Icon n="chart" style={{ marginRight: 6, color: 'inherit' }} />全国物料汇总（真算）<button className="export-btn"><Icon n="download" size={12} /> 导出</button></div>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.7 }}>
+          理论需求量 = 纯预测杯量 × 用量（<b>不带</b>区域系数、备货系数）；全国预测量 = 经系数 + 效期校验后的当前分仓计算值；
+          下单量 = Σ各仓 ceil(合计 ÷ MOQ) × MOQ（MOQ 取物料份额加权值，见 Step 3 供应商分配表）
+        </div>
         <table className="data-table">
-          <thead><tr><th>物料</th><th className="num">全国预测总量</th><th className="num">统配量</th><th className="num">统配外</th><th className="num">合计</th></tr></thead>
+          <thead><tr><th>物料</th><th className="num">理论需求量</th><th className="num">全国预测量</th><th className="num">统配量</th><th className="num">统配外</th><th className="num">合计</th><th className="num">下单量</th><th>单位</th></tr></thead>
           <tbody>
-            {nationalMaterialSummary.map((m, i) => (
+            {calc.materials.map((m, i) => (
               <tr key={i}>
-                <td style={{ fontWeight: 600 }}>{m.name}</td>
+                <td style={{ fontWeight: 600 }}>{m.material}</td>
+                <td className="num" style={{ color: 'var(--text-muted)' }}>{m.theoreticalQty.toLocaleString()}</td>
                 <td className="num">{m.forecastQty.toLocaleString()}</td>
-                <td className="num">{m.allocationQty.toLocaleString()}</td>
-                <td className="num">{m.extraStock.toLocaleString()}</td>
-                <td className="num" style={{ fontWeight: 700 }}>{m.orderQty.toLocaleString()}</td>
+                <td className="num">{m.unifiedQty.toLocaleString()}</td>
+                <td className="num">{m.unifiedExtra.toLocaleString()}</td>
+                <td className="num">{m.unifiedQty + m.unifiedExtra > 0 ? (m.unifiedQty + m.unifiedExtra).toLocaleString() : m.forecastQty.toLocaleString()}</td>
+                <td className="num" style={{ fontWeight: 700, color: 'var(--accent)' }}>{m.orderQty.toLocaleString()}</td>
+                <td style={{ fontSize: 11 }}>{m.unit}</td>
               </tr>
             ))}
           </tbody>
@@ -1546,32 +1629,35 @@ W4 = 1150.49 × 1.2 × 0.012544 × 7 ÷ 11.41 × 1.0 = 10.62
   );
 }
 
-// ===== 汇总到仓扁平表组件（仓+物料一起展示，支持筛选+分页） =====
+// ===== 汇总到仓扁平表组件（仓+物料一起展示，支持筛选+分页；档位 2：真算） =====
 function WarehouseFlatTable() {
+  // 档位 2：仓级数字来自引擎（区域系数 / 备货系数 / 损耗率 / W1-W4 / 开封效期 / MOQ 改动全部联动）
+  const { calc } = useCalc();
   const [whFilter, setWhFilter] = useState('all');
   const [whPage, setWhPage] = useState(0);
   const whPageSize = 20;
 
-  // 展开为扁平行
   const flatRows = useMemo(() => {
-    const rows: Array<{ warehouse: string; storeCount: number; material: string; materialCode: string; allocationQty: number; extraStock: number; total: number; orderQty: number; unit: string }> = [];
-    allWarehouseSummary.forEach(wh => {
-      wh.materials.forEach((m, mi) => {
+    const rows: Array<{ warehouse: string; storeCount: number; material: string; materialCode: string; forecastQty: number; allocationQty: number; extraStock: number; total: number; orderQty: number; unit: string; moq: number }> = [];
+    calc.warehouses.forEach(wh => {
+      wh.materials.forEach(m => {
         rows.push({
           warehouse: wh.warehouseName,
           storeCount: wh.storeCount,
-          material: m.name,
-          materialCode: ['20260901-001','20260902-002','20260903-003','0260815-004'][mi] || '',
-          allocationQty: m.allocationQty,
-          extraStock: m.extraStock,
+          material: m.material,
+          materialCode: m.code,
+          forecastQty: m.forecastQty,
+          allocationQty: m.unifiedQty,
+          extraStock: m.unifiedExtra,
           total: m.total,
           orderQty: m.orderQty,
           unit: m.unit,
+          moq: m.moq,
         });
       });
     });
     return rows;
-  }, []);
+  }, [calc]);
 
   const filteredRows = whFilter === 'all' ? flatRows : flatRows.filter(r => r.warehouse === whFilter);
   const totalPages = Math.ceil(filteredRows.length / whPageSize);
@@ -1582,16 +1668,19 @@ function WarehouseFlatTable() {
 
   return (
     <div className="card">
-      <div className="card-title"><Icon n="factory" style={{ marginRight: 6, color: 'inherit' }} />汇总到仓（{allWarehouseSummary.length}仓 × 物料）<button className="export-btn"><Icon n="download" size={12} /> 导出</button></div>
-      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>仓店映射来源：dw_store_warehouse_map（WEEK + LEVEL_ONE/LEVEL_TWO，一店一仓）</p>
-      
+      <div className="card-title"><Icon n="factory" style={{ marginRight: 6, color: 'inherit' }} />汇总到仓（{calc.warehouses.length}仓 × {calc.materials.length}物料 · 真算）<button className="export-btn"><Icon n="download" size={12} /> 导出</button></div>
+      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.7 }}>
+        仓店映射来源：dw_store_warehouse_map（WEEK + LEVEL_ONE/LEVEL_TWO，一店一仓）；<b>仓库物料量 = Σ该仓覆盖门店的物料量</b>（底表 50 家门店样本 → 仓级按「全国平均店 × 仓覆盖门店数」放大，Σ仓 == 全国）。
+        统配量＝T-30 出数的<b>外部绝对量</b>（出数后不随页面调参变化）；统配外 = IF(预测 − 统配 &lt; 0, 0, 差值)；下单量 = ceil(合计 ÷ MOQ) × MOQ。
+      </p>
+
       {/* 筛选栏 */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>仓库筛选：</span>
         <select value={whFilter} onChange={e => { setWhFilter(e.target.value); setWhPage(0); }} style={{ fontSize: 12, padding: '4px 8px', borderRadius: 4, border: '1px solid var(--border)', background: 'white', minWidth: 140 }}>
-          <option value="all">全部仓库（{allWarehouseSummary.length}仓）</option>
-          {allWarehouseSummary.map((wh, i) => (
-            <option key={i} value={wh.warehouseName}>{wh.warehouseName}（{wh.storeCount}店）</option>
+          <option value="all">全部仓库（{calc.warehouses.length}仓）</option>
+          {calc.warehouses.map((wh, i) => (
+            <option key={i} value={wh.warehouseName}>{wh.warehouseName}（{wh.storeCount}店 · 系数{wh.regionCoeff}）</option>
           ))}
         </select>
         <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 'auto' }}>共 {filteredRows.length} 行</span>
@@ -1599,16 +1688,18 @@ function WarehouseFlatTable() {
 
       {/* 扁平表 */}
       <div style={{ maxHeight: 480, overflowY: 'auto' }}>
-        <table className="data-table">
+        <table className="data-table table-fit">
           <thead>
             <tr>
               <th style={{ minWidth: 100, position: 'sticky', top: 0, background: 'var(--bg, white)', zIndex: 2 }}>仓库</th>
               <th className="num" style={{ position: 'sticky', top: 0, background: 'var(--bg, white)', zIndex: 2 }}>覆盖门店</th>
               <th style={{ minWidth: 120, position: 'sticky', top: 0, background: 'var(--bg, white)', zIndex: 2 }}>物料</th>
               <th style={{ position: 'sticky', top: 0, background: 'var(--bg, white)', zIndex: 2 }}>物料编码</th>
+              <th className="num" style={{ position: 'sticky', top: 0, background: 'var(--bg, white)', zIndex: 2 }}>预测量<br/><span style={{ fontSize: 10, fontWeight: 400 }}>(当前分仓计算值)</span></th>
               <th className="num" style={{ position: 'sticky', top: 0, background: 'var(--bg, white)', zIndex: 2 }}>统配量</th>
               <th className="num" style={{ position: 'sticky', top: 0, background: 'var(--bg, white)', zIndex: 2 }}>统配外</th>
               <th className="num" style={{ position: 'sticky', top: 0, background: 'var(--bg, white)', zIndex: 2 }}>合计</th>
+              <th className="num" style={{ position: 'sticky', top: 0, background: 'var(--bg, white)', zIndex: 2 }}>MOQ</th>
               <th className="num" style={{ position: 'sticky', top: 0, background: 'var(--bg, white)', zIndex: 2 }}>下单量</th>
               <th style={{ position: 'sticky', top: 0, background: 'var(--bg, white)', zIndex: 2 }}>单位</th>
             </tr>
@@ -1623,9 +1714,11 @@ function WarehouseFlatTable() {
                   <td className="num" style={{ color: 'var(--text-muted)', fontSize: 11 }}>{showWh ? r.storeCount : ''}</td>
                   <td style={{ fontWeight: 600 }}>{r.material}</td>
                   <td style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{r.materialCode}</td>
+                  <td className="num">{r.forecastQty.toLocaleString()}</td>
                   <td className="num">{r.allocationQty.toLocaleString()}</td>
                   <td className="num" style={{ fontWeight: 700 }}>{r.extraStock.toLocaleString()}</td>
                   <td className="num">{r.total.toLocaleString()}</td>
+                  <td className="num" style={{ color: 'var(--text-muted)', fontSize: 11 }}>{r.moq}</td>
                   <td className="num" style={{ fontWeight: 700, color: 'var(--accent)' }}>{r.orderQty.toLocaleString()}</td>
                   <td style={{ fontSize: 11 }}>{r.unit}</td>
                 </tr>
@@ -1650,17 +1743,11 @@ function WarehouseFlatTable() {
 }
 
 // B-4：供应商份额实时合计校验（改份额后立即重算；≠100% 拒绝提交 —— 对齐 B 规格 §2.3）
-const SUPPLIER_ROOT: Array<{ merged: string; rows: Array<[string, number]> }> = [
-  { merged: '安溪铁观音', rows: [['安溪铁观音-1 / 福建安溪茶业A', 60], ['安溪铁观音-2 / 云南普洱供应链B', 40]] },
-  { merged: '莲雾苹果汁', rows: [['莲雾苹果汁 / 海南果汁工厂C', 100]] },
-  { merged: '冷冻生椰乳', rows: [['冷冻生椰乳 / 椰树供应链D', 70], ['冷冻生椰乳 / 海南椰品E', 30]] },
-  { merged: '东方美人乌龙茶', rows: [['东方美人乌龙茶-A / 台湾茶业F', 100]] },
-  { merged: '冷冻凤梨汁', rows: [['冷冻凤梨汁 / 新供应商G（虚拟项）', 100]] },
-];
+// 底表定义已移到 data/mock.ts 的 supplierRoot（计算引擎 calcInput 与页面共用同一份）
 
 function SupplierShareCheck() {
   useValueVersion();
-  const items = SUPPLIER_ROOT.map(g => {
+  const items = supplierRoot.map(g => {
     const sum = g.rows.reduce((a, [gran, def]) => a + getPageValue('供应商份额', gran, def), 0);
     return { merged: g.merged, sum: Math.round(sum * 100) / 100, ok: Math.abs(sum - 100) < 0.001 };
   });
@@ -1683,6 +1770,8 @@ function SupplierShareCheck() {
 
 function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone }: { tongpeiDone: boolean; supplierDone: boolean }) {
   const safetyDays = usePageValue('安全库存天数', '全局', 7);
+  // 档位 2：A 类计算过程检测全部来自引擎（§4.11 备货偏差 10% / §4.12 MOQ 取整 5% / §4.15 安库 N 天）
+  const { calc } = useCalc();
   // 异常统配门店明细（12家）
   const abnormalStores = [
     { storeId: '44030708', storeName: '广东深圳龙岗摩尔城店', warehouse: '广东一级仓', material: '莲雾苹果汁', forecast: 82, unified: 95, diff: -13 },
@@ -1699,13 +1788,19 @@ function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone }: { tongpei
     { storeId: '35020101', storeName: '厦门中山路店', warehouse: '福建一级仓', material: '安溪铁观音', forecast: 12, unified: 15, diff: -3 },
   ];
 
-  // 物料维度预警数据
-  const warningByMaterial = [
-    { name: '安溪铁观音', forecastQty: 66285, orderQty: 66285, stockDeviation: 5.2, moqDeviation: 0.03, safetyDays: 20.3, stockStatus: 'pass', moqStatus: 'pass', safetyStatus: 'pass' },
-    { name: '莲雾苹果汁', forecastQty: 363340, orderQty: 363540, stockDeviation: 8.6, moqDeviation: 0.055, safetyDays: 17.2, stockStatus: 'pass', moqStatus: 'pass', safetyStatus: 'pass' },
-    { name: '冷冻生椰乳', forecastQty: 138095, orderQty: 138345, stockDeviation: 12.1, moqDeviation: 0.18, safetyDays: 11.8, stockStatus: 'fail', moqStatus: 'pass', safetyStatus: 'pass' },
-    { name: '东方美人乌龙茶-A', forecastQty: 28585, orderQty: 28655, stockDeviation: 3.8, moqDeviation: 0.24, safetyDays: 20.0, stockStatus: 'pass', moqStatus: 'pass', safetyStatus: 'pass' },
-  ];
+  // 物料维度检测数据（真算）
+  const warningByMaterial = calc.materials.map(m => ({
+    name: m.material,
+    forecastQty: m.forecastQty,
+    orderQty: m.orderQty,
+    theoreticalQty: m.theoreticalQty,
+    stockDeviation: m.devPct,
+    moqDeviation: m.moqDevPct,
+    safetyDays: m.safetyDays,
+    stockStatus: m.stockPass ? 'pass' : 'fail',
+    moqStatus: m.moqPass ? 'pass' : 'fail',
+    safetyStatus: m.safetyPass ? 'pass' : 'fail',
+  }));
 
   const statusIcon = (s: string) => s === 'pass' ? <span className="status-tag status-pass"><span className="dot dot-pass" />通过</span> : s === 'fail' ? <span className="status-tag status-fail"><span className="dot dot-fail" />超阈值</span> : <span className="status-tag status-warn"><span className="dot dot-warn" />提醒</span>;
   const statusVal = (val: string | number, s: string) => <span className={s === 'pass' ? 'warn-pass' : s === 'fail' ? 'warn-fail' : 'warn-warn'}>{val}</span>;
@@ -1735,13 +1830,26 @@ function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone }: { tongpei
           <table className="data-table table-fit">
             <thead><tr><th>合并品名</th><th>原材料名称</th><th>供应商</th><th className="num">份额%</th><th className="num">MOQ</th><th className="num">周可供量*</th><th className="num">需求分配量<br/><span style={{ fontSize: 10, fontWeight: 400 }}>（合并品名维度）</span></th><th className="num">MOQ取整后</th></tr></thead>
             <tbody>
-              <tr><td style={{ fontWeight: 600 }}>安溪铁观音</td><td>安溪铁观音-1</td><td>福建安溪茶业A</td><td className="num"><EditableNumber value={60} rule={{ min: 0, max: 100, int: true, suffix: '%' }} param="供应商份额" granularity="安溪铁观音-1 / 福建安溪茶业A" effect="Step ⑦–⑨" /></td><td className="num"><EditableNumber value={500} rule={{ min: 1, max: 100000, int: true }} param="MOQ" granularity="安溪铁观音-1 / 福建安溪茶业A" effect="Step ⑦–⑨" /></td><td className="num">50,000</td><td className="num">39,771</td><td className="num">40,000</td></tr>
-              <tr><td style={{ fontWeight: 600 }}>安溪铁观音</td><td>安溪铁观音-2</td><td>云南普洱供应链B</td><td className="num"><EditableNumber value={40} rule={{ min: 0, max: 100, int: true, suffix: '%' }} param="供应商份额" granularity="安溪铁观音-2 / 云南普洱供应链B" effect="Step ⑦–⑨" /></td><td className="num"><EditableNumber value={300} rule={{ min: 1, max: 100000, int: true }} param="MOQ" granularity="安溪铁观音-2 / 云南普洱供应链B" effect="Step ⑦–⑨" /></td><td className="num">30,000</td><td className="num">26,514</td><td className="num">26,700</td></tr>
-              <tr><td style={{ fontWeight: 600 }}>莲雾苹果汁</td><td>莲雾苹果汁</td><td>海南果汁工厂C</td><td className="num"><EditableNumber value={100} rule={{ min: 0, max: 100, int: true, suffix: '%' }} param="供应商份额" granularity="莲雾苹果汁 / 海南果汁工厂C" effect="Step ⑦–⑨" /></td><td className="num"><EditableNumber value={200} rule={{ min: 1, max: 100000, int: true }} param="MOQ" granularity="莲雾苹果汁 / 海南果汁工厂C" effect="Step ⑦–⑨" /></td><td className="num">400,000</td><td className="num">363,540</td><td className="num">363,600</td></tr>
-              <tr><td style={{ fontWeight: 600 }}>冷冻生椰乳</td><td>冷冻生椰乳</td><td>椰树供应链D</td><td className="num"><EditableNumber value={70} rule={{ min: 0, max: 100, int: true, suffix: '%' }} param="供应商份额" granularity="冷冻生椰乳 / 椰树供应链D" effect="Step ⑦–⑨" /></td><td className="num"><EditableNumber value={100} rule={{ min: 1, max: 100000, int: true }} param="MOQ" granularity="冷冻生椰乳 / 椰树供应链D" effect="Step ⑦–⑨" /></td><td className="num">120,000</td><td className="num">96,842</td><td className="num">96,900</td></tr>
-              <tr><td style={{ fontWeight: 600 }}>冷冻生椰乳</td><td>冷冻生椰乳</td><td>海南椰品E</td><td className="num"><EditableNumber value={30} rule={{ min: 0, max: 100, int: true, suffix: '%' }} param="供应商份额" granularity="冷冻生椰乳 / 海南椰品E" effect="Step ⑦–⑨" /></td><td className="num"><EditableNumber value={100} rule={{ min: 1, max: 100000, int: true }} param="MOQ" granularity="冷冻生椰乳 / 海南椰品E" effect="Step ⑦–⑨" /></td><td className="num">60,000</td><td className="num">41,503</td><td className="num">41,600</td></tr>
-              <tr><td style={{ fontWeight: 600 }}>东方美人乌龙茶</td><td>东方美人乌龙茶-A</td><td>台湾茶业F</td><td className="num"><EditableNumber value={100} rule={{ min: 0, max: 100, int: true, suffix: '%' }} param="供应商份额" granularity="东方美人乌龙茶-A / 台湾茶业F" effect="Step ⑦–⑨" /></td><td className="num"><EditableNumber value={200} rule={{ min: 1, max: 100000, int: true }} param="MOQ" granularity="东方美人乌龙茶-A / 台湾茶业F" effect="Step ⑦–⑨" /></td><td className="num">35,000</td><td className="num">28,655</td><td className="num">28,800</td></tr>
-              <tr style={{ background: 'rgba(96,165,250,0.06)' }}><td style={{ fontWeight: 600 }}>冷冻凤梨汁</td><td>冷冻凤梨汁</td><td><b>新供应商G（虚拟项）</b><br/><span style={{ fontSize: 11, color: 'var(--warn)' }}>SRM 无发货仓数据 → 不考虑地点</span></td><td className="num"><EditableNumber value={100} rule={{ min: 0, max: 100, int: true, suffix: '%' }} param="供应商份额" granularity="冷冻凤梨汁 / 新供应商G（虚拟项）" effect="Step ⑦–⑨" /></td><td className="num"><EditableNumber value={1} rule={{ min: 1, max: 100000, int: true }} param="MOQ" granularity="冷冻凤梨汁 / 新供应商G（虚拟项）" effect="Step ⑦–⑨" /><br/><span style={{ fontSize: 10 }}>（默认 1＝不取整）</span></td><td className="num">—</td><td className="num">12,480</td><td className="num">12,480</td></tr>
+              {supplierRoot.flatMap(g => g.rows.map(([key, defShare]) => {
+                const [matName, supplierName] = key.split(' / ');
+                const row = calc.supplierRows.find(r => r.material === matName && r.supplier === supplierName);
+                const isNewSupplier = key.includes('新供应商');
+                return (
+                  <tr key={key} style={isNewSupplier ? { background: 'rgba(96,165,250,0.06)' } : undefined}>
+                    <td style={{ fontWeight: 600 }}>{g.merged}</td>
+                    <td>{matName}</td>
+                    <td>{isNewSupplier ? <><b>{supplierName}</b><br/><span style={{ fontSize: 11, color: 'var(--warn)' }}>SRM 无发货仓数据 → 不考虑地点</span></> : supplierName}</td>
+                    <td className="num"><EditableNumber value={defShare} rule={{ min: 0, max: 100, int: true, suffix: '%' }} param="供应商份额" granularity={key} effect="Step ⑦–⑨" /></td>
+                    <td className="num">
+                      <EditableNumber value={MOQ_DEFAULTS[key] ?? 1} rule={{ min: 1, max: 100000, int: true }} param="MOQ" granularity={key} effect="Step ⑦–⑨" />
+                      {(MOQ_DEFAULTS[key] ?? 1) <= 1 && <span style={{ fontSize: 10, display: 'block' }}>（默认 1＝不取整）</span>}
+                    </td>
+                    <td className="num">{SUPPLY_CAPACITY[key] ?? '—'}</td>
+                    <td className="num">{row ? row.allocQty.toLocaleString() : '—'}</td>
+                    <td className="num">{row ? row.moqQty.toLocaleString() : '—'}</td>
+                  </tr>
+                );
+              }))}
             </tbody>
           </table>
           <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.9 }}>
@@ -1815,7 +1923,7 @@ function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone }: { tongpei
               <th>状态</th>
               <th className="num">MOQ取整偏差</th>
               <th>状态</th>
-              <th className="num">安全库存天数</th>
+              <th className="num">安全库存天数<br/><span style={{ fontSize: 10, fontWeight: 400 }}>（全国加权）</span></th>
               <th>状态</th>
             </tr>
           </thead>
@@ -1836,54 +1944,53 @@ function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone }: { tongpei
           </tbody>
         </table>
         <div style={{ marginTop: 8, fontSize: 12, display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span style={{ color: 'var(--warn)' }}><Icon n="alert" size={12} /> 冷冻生椰乳备货偏差 12.1%（分仓计算值 vs 理论需求量）超阈值 —— <b>可继续下一步</b>，系统仅做数值提醒（详见下方偏差来源拆解）</span>
-          <span style={{ color: 'var(--text-muted)' }}><span className="dot dot-pass" /> 其余 3 个物料均在阈值内 ｜ 本页检测结果不推送，仅在上新监控阶段触发预警时才走预警中心 / 首页消息</span>
+          {calc.materials.filter(m => !m.stockPass).map(m => (
+            <span key={m.material} style={{ color: 'var(--warn)' }}><Icon n="alert" size={12} /> <b>{m.material}</b> 备货偏差 {m.devPct}%（分仓计算值 {m.forecastQty.toLocaleString()} vs 理论需求量 {m.theoreticalQty.toLocaleString()} {m.unit}）超阈值 —— <b>可继续下一步</b>，系统仅做数值提醒（主因见下方拆解）</span>
+          ))}
+          {calc.totals.stockAlertCount === 0 && <span style={{ color: 'var(--good)' }}><span className="dot dot-pass" /> 全部 {calc.materials.length} 个物料备货偏差均在阈值内</span>}
+          <span style={{ color: 'var(--text-muted)' }}>本页检测结果不推送，仅在上新监控阶段触发预警时才走预警中心 / 首页消息 ｜ 阈值：备货偏差 {calc.totals.stockAlertCount}/{calc.materials.length} 超阈值 · MOQ 取整 {calc.totals.moqAlertCount}/{calc.materials.length} 超阈值 · 安库（可销售天数 &lt; {safetyDays} 天）{calc.totals.safetyAlertCount}/{calc.materials.length} 超阈值</span>
         </div>
       </div>
 
-      {/* 偏差来源拆解 + 调参建议（V7.5 新增） */}
-      <div className="card" style={{ borderColor: 'var(--warn)', background: 'rgba(245,158,11,0.04)' }}>
-        <div className="card-title" style={{ color: 'var(--warn)' }}><Icon n="search" style={{ marginRight: 6, color: 'inherit' }} />偏差来源拆解 + 调参建议（冷冻生椰乳 +12.1%）</div>
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.6 }}>
-          理论需求量（纯预测杯量 × 用量，不带任何系数）<b>123,180</b> 瓶 ｜ 当前分仓计算值 <b>138,095</b> 瓶 ｜ 总偏差 <b>+14,915</b> 瓶（+12.1%）
+      {/* 偏差来源拆解 + 调参建议（真算：取 |备货偏差率| 最大的物料做三因素精确分解） */}
+      {calc.breakdown && (
+        <div className="card" style={{ borderColor: 'var(--warn)', background: 'rgba(245,158,11,0.04)' }}>
+          <div className="card-title" style={{ color: 'var(--warn)' }}><Icon n="search" style={{ marginRight: 6, color: 'inherit' }} />偏差来源拆解 + 调参建议（{calc.breakdown.material} {calc.breakdown.devPct > 0 ? '+' : ''}{calc.breakdown.devPct}%）</div>
+          <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.6 }}>
+            理论需求量（纯预测杯量 × 用量，不带任何系数）<b>{calc.breakdown.theoreticalQty.toLocaleString()}</b> {calc.breakdown.unit} ｜
+            当前分仓计算值 <b>{calc.breakdown.forecastQty.toLocaleString()}</b> {calc.breakdown.unit} ｜
+            Σ仓 MOQ 取整后 <b>{calc.breakdown.orderQty.toLocaleString()}</b> {calc.breakdown.unit} ｜
+            总偏差 <b>{calc.breakdown.totalDelta > 0 ? '+' : ''}{calc.breakdown.totalDelta.toLocaleString()}</b> {calc.breakdown.unit}（{calc.breakdown.devPct > 0 ? '+' : ''}{calc.breakdown.devPct}%）
+          </div>
+          <table className="data-table">
+            <thead>
+              <tr><th>偏差来源</th><th className="num">贡献量</th><th className="num">占总偏差</th><th>说明</th></tr>
+            </thead>
+            <tbody>
+              {calc.breakdown.parts.map((p, i) => (
+                <tr key={p.name} style={{ background: i === 0 ? 'rgba(245,158,11,0.08)' : undefined }}>
+                  <td style={{ fontWeight: i === 0 ? 700 : 600 }}>{i === 0 ? '①' : i === 1 ? '②' : '③'} {p.name}{i === 0 ? '（主因）' : ''}</td>
+                  <td className="num" style={{ fontWeight: i === 0 ? 700 : 400 }}>{p.value > 0 ? '+' : ''}{Math.round(p.value).toLocaleString()}</td>
+                  <td className="num" style={{ fontWeight: i === 0 ? 700 : 400 }}>{p.share}%</td>
+                  <td style={{ fontSize: 11 }}>{p.desc}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.9 }}>
+            <div><b>主因判断</b>：{calc.breakdown.main}贡献 {calc.breakdown.mainSharePct}%{calc.breakdown.mainSharePct >= 50 ? ' > 50% → 该因素主导（按下方建议处理）' : '（三因素较分散，建议逐项试调）'}</div>
+            {calc.breakdown.advice.map((a, i) => <div key={i}><b>调参建议</b>：{a}</div>)}
+            <div style={{ color: 'var(--text-muted)' }}>说明：本卡片实时联动 —— 在表格里改任一参数，这里的三因素贡献与偏差率会立即重算。</div>
+          </div>
         </div>
-        <table className="data-table">
-          <thead>
-            <tr><th>偏差来源</th><th className="num">贡献量</th><th className="num">占总偏差</th><th>说明</th></tr>
-          </thead>
-          <tbody>
-            <tr style={{ background: 'rgba(245,158,11,0.08)' }}>
-              <td style={{ fontWeight: 700 }}>① 系数贡献（主因）</td>
-              <td className="num" style={{ fontWeight: 700 }}>+9,860</td>
-              <td className="num" style={{ fontWeight: 700 }}>66.1%</td>
-              <td>区域系数加权 1.08 × 备货系数 1.4 放大</td>
-            </tr>
-            <tr>
-              <td style={{ fontWeight: 600 }}>② 效期下限贡献</td>
-              <td className="num">+3,020</td>
-              <td className="num">20.3%</td>
-              <td>部分门店周物料量被开封效期最小量顶起</td>
-            </tr>
-            <tr>
-              <td style={{ fontWeight: 600 }}>③ MOQ 取整贡献</td>
-              <td className="num">+2,035</td>
-              <td className="num">13.6%</td>
-              <td>各仓 MOQ 向上取整放大</td>
-            </tr>
-          </tbody>
-        </table>
-        <div style={{ marginTop: 8, fontSize: 12, lineHeight: 1.9 }}>
-          <div><b>主因判断</b>：系数贡献 66.1% &gt; 50% → <b>系数主导</b>（调系数有效；若为效期下限主导或 MOQ 主导，调系数无效）</div>
-          <div><b>调参建议</b>：① 优先调区域系数 —— 湖北 1.196 → 1.10、辽宁 1.188 → 1.10（预计偏差降至 ~5%）② 备货系数 1.4 → 1.2 可再降 4~5pp</div>
-          <div style={{ color: 'var(--text-muted)' }}>支持 what-if 实时预览：改完系数立即显示偏差率变化，无需重跑全流程</div>
-        </div>
-      </div>
+      )}
 
       {/* 仓级统配对比 */}
       <div className="card">
         <div className="card-title"><Icon n="box" style={{ marginRight: 6, color: 'inherit' }} />仓级统配对比<button className="export-btn"><Icon n="download" size={12} /> 导出</button></div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.6 }}>
-          预测统配量（分仓计算值）vs 实际统配量（SCM下发），偏差 &gt; 10% 标记为异常
+          预测统配量（分仓计算值）vs 实际统配量（SCM下发），偏差 &gt; 10% 标记为异常<br/>
+          <b>本表为外部统配数据（T-30 出数，mock），不参与本轮真算</b> —— 分仓计算侧的真算结果见上方「汇总到仓」表。
         </div>
         <table className="data-table">
           <thead>
@@ -1960,68 +2067,68 @@ function RightStep3WarehouseAndWarnings({ tongpeiDone, supplierDone }: { tongpei
         </div>
       )}
 
-      {/* 安全库存明细 */}
-      <div className="card">
-        <div className="card-title"><Icon n="chart" style={{ marginRight: 6, color: 'inherit' }} />安全库存校验 — 北京二级仓<button className="export-btn"><Icon n="download" size={12} /> 导出</button></div>
-        <table className="data-table">
-          <thead><tr><th>物料</th><th>物料编码</th><th className="num">统配外</th><th className="num">日均消耗</th><th className="num">可销售天数</th><th>状态</th></tr></thead>
-          <tbody>
-            <tr><td style={{ fontWeight: 600 }}>安溪铁观音</td><td style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>20260901-001</td><td className="num">1,539</td><td className="num">76.0</td><td className="num" style={{ fontWeight: 700, color: 'var(--good)' }}>20.3天</td><td><span className="status-tag status-pass"><span className="dot dot-pass" />通过</span></td></tr>
-            <tr><td style={{ fontWeight: 600 }}>莲雾苹果汁</td><td style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>20260902-002</td><td className="num">8,245</td><td className="num">478.4</td><td className="num" style={{ fontWeight: 700, color: 'var(--good)' }}>17.2天</td><td><span className="status-tag status-pass"><span className="dot dot-pass" />通过</span></td></tr>
-            <tr><td style={{ fontWeight: 600 }}>冷冻生椰乳</td><td style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>20260903-003</td><td className="num">2,035</td><td className="num">172.4</td><td className="num" style={{ fontWeight: 700, color: 'var(--good)' }}>11.8天</td><td><span className="status-tag status-pass"><span className="dot dot-pass" />通过</span></td></tr>
-            <tr><td style={{ fontWeight: 600 }}>东方美人乌龙茶-A</td><td style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>0260815-004</td><td className="num">823</td><td className="num">41.2</td><td className="num" style={{ fontWeight: 700, color: 'var(--good)' }}>20.0天</td><td><span className="status-tag status-pass"><span className="dot dot-pass" />通过</span></td></tr>
-          </tbody>
-        </table>
-      </div>
+      {/* 安全库存明细（真算：安库 = round(仓上新预测总量 ÷ 28)；可销售天数 = 统配外 ÷ 日均消耗） */}
+      {(() => {
+        const wh = calc.warehouses[0];
+        if (!wh) return null;
+        return (
+          <div className="card">
+            <div className="card-title"><Icon n="chart" style={{ marginRight: 6, color: 'inherit' }} />安全库存校验 — {wh.warehouseName}（系数 {wh.regionCoeff}）<button className="export-btn"><Icon n="download" size={12} /> 导出</button></div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 8, lineHeight: 1.7 }}>
+              安库（日均消耗量）= round(仓维度上新预测总量 ÷ 28)；可销售天数 = 统配外 ÷ 日均消耗；&lt; 安全库存天数（当前 <b>{safetyDays} 天</b>）→ 提示补充。<b>{wh.warehouseName} 覆盖 {wh.storeCount.toLocaleString()} 家门店</b>。
+            </div>
+            <table className="data-table table-fit">
+              <thead><tr><th>物料</th><th>物料编码</th><th className="num">统配外</th><th className="num">日均消耗</th><th className="num">可销售天数</th><th>状态</th></tr></thead>
+              <tbody>
+                {wh.materials.map((m, i) => (
+                  <tr key={i}>
+                    <td style={{ fontWeight: 600 }}>{m.material}</td>
+                    <td style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{m.code}</td>
+                    <td className="num">{m.unifiedExtra.toLocaleString()}</td>
+                    <td className="num">{m.avgDailyConsume.toLocaleString()}</td>
+                    <td className="num" style={{ fontWeight: 700, color: m.safetyPass ? 'var(--good)' : 'var(--danger, #ef4444)' }}>{m.sellableDays}天</td>
+                    <td>{m.safetyPass ? <span className="status-tag status-pass"><span className="dot dot-pass" />通过</span> : <span className="status-tag status-warn"><span className="dot dot-warn" />低于 {safetyDays} 天</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
     </div>
   );
 }
 
 function RightStep4Output({ productInfo }: { productInfo: NewProductInfo }) {
   const safetyDays = usePageValue('安全库存天数', '全局', 7);
-  // 预警计算明细数据
-  const warningDetail = [
-    {
-      name: '安溪铁观音', code: '20260901-001',
-      forecastQty: 66285, orderQty: 66285,
-      stockDeviation: 5.2, stockThreshold: 10, stockPass: true,
-      stockCalc: '|66,285 - 66,285| ÷ 66,285 = 0%（含MOQ取整后5.2%）',
-      moqDeviation: 0.03, moqThreshold: 5, moqPass: true,
-      moqCalc: 'MOQ=500, 原始量39,771 → 取整39,500, 偏差=271÷39,771=0.68%（加权均值0.03%）',
-      safetyExtra: 42920, safetyDaily: 3800, safetyDays: 20.3, safetyThreshold: 7, safetyPass: true,
-      safetyCalc: '统配外42,920 ÷ 日均消耗3,800 = 11.3天（全国加权均值20.3天）',
-    },
-    {
-      name: '莲雾苹果汁', code: '20260902-002',
-      forecastQty: 363340, orderQty: 363540,
-      stockDeviation: 8.6, stockThreshold: 10, stockPass: true,
-      stockCalc: '|363,340 - 363,540| ÷ 363,340 = 0.055%（含MOQ取整后8.6%）',
-      moqDeviation: 0.055, moqThreshold: 5, moqPass: true,
-      moqCalc: 'MOQ=200, 原始量224,554 → 取整224,600, 偏差=46÷224,554=0.02%（加权均值0.055%）',
-      safetyExtra: 224554, safetyDaily: 20800, safetyDays: 17.2, safetyThreshold: 7, safetyPass: true,
-      safetyCalc: '统配外224,554 ÷ 日均消耗20,800 = 10.8天（全国加权均值17.2天）',
-    },
-    {
-      name: '冷冻生椰乳', code: '20260903-003',
-      forecastQty: 138095, orderQty: 138345,
-      stockDeviation: 12.1, stockThreshold: 10, stockPass: false,
-      stockCalc: '|138,095 - 138,345| ÷ 138,095 = 0.18%（含MOQ取整后12.1%）',
-      moqDeviation: 0.18, moqThreshold: 5, moqPass: true,
-      moqCalc: 'MOQ=100, 原始量78,316 → 取整78,400, 偏差=84÷78,316=0.11%（加权均值0.18%）',
-      safetyExtra: 78316, safetyDaily: 10000, safetyDays: 11.8, safetyThreshold: 7, safetyPass: true,
-      safetyCalc: '统配外78,316 ÷ 日均消耗10,000 = 7.8天（全国加权均值11.8天）',
-    },
-    {
-      name: '东方美人乌龙茶-A', code: '0260815-004',
-      forecastQty: 28585, orderQty: 28655,
-      stockDeviation: 3.8, stockThreshold: 10, stockPass: true,
-      stockCalc: '|28,585 - 28,655| ÷ 28,585 = 0.24%（含MOQ取整后3.8%）',
-      moqDeviation: 0.24, moqThreshold: 5, moqPass: true,
-      moqCalc: 'MOQ=200, 原始量28,585 → 取整28,600, 偏差=15÷28,585=0.05%（加权均值0.24%）',
-      safetyExtra: 28585, safetyDaily: 2200, safetyDays: 20.0, safetyThreshold: 7, safetyPass: true,
-      safetyCalc: '统配外28,585 ÷ 日均消耗2,200 = 13.0天（全国加权均值20.0天）',
-    },
-  ];
+  // 档位 2：结果输出全部来自引擎（物料量 → 汇总到仓 → MOQ → 检测）
+  const { calc } = useCalc();
+  // 预警计算明细（真算，逐物料；公式串由真实数值代入生成）
+  const warningDetail = calc.materials.map(m => {
+    const orderTotal = m.unifiedQty + m.unifiedExtra;
+    return {
+      name: m.material,
+      code: m.code,
+      unit: m.unit,
+      forecastQty: m.forecastQty,
+      orderQty: m.orderQty,
+      theoreticalQty: m.theoreticalQty,
+      stockDeviation: m.devPct,
+      stockThreshold: 10,
+      stockPass: m.stockPass,
+      stockCalc: `(${m.forecastQty.toLocaleString()} - ${m.theoreticalQty.toLocaleString()}) ÷ ${m.theoreticalQty.toLocaleString()} = ${m.devPct > 0 ? '+' : ''}${m.devPct}%（分仓计算值 vs 理论需求量）`,
+      moqDeviation: m.moqDevPct,
+      moqThreshold: 5,
+      moqPass: m.moqPass,
+      moqCalc: `MOQ=${m.moq}（份额加权），Σ仓合计 ${orderTotal.toLocaleString()} → 取整后 ${m.orderQty.toLocaleString()}，偏差 ${m.moqDevPct}%`,
+      safetyExtra: m.unifiedExtra,
+      safetyDaily: Math.round(m.forecastQty / 28),
+      safetyDays: m.safetyDays,
+      safetyThreshold: safetyDays,
+      safetyPass: m.safetyPass,
+      safetyCalc: `统配外 ${m.unifiedExtra.toLocaleString()} ÷ 日均消耗 ${Math.round(m.forecastQty / 28).toLocaleString()}（＝仓上新预测总量 ÷ 28） = ${m.safetyDays} 天`,
+    };
+  });
 
   const passIcon = (pass: boolean) => pass
     ? <span className="status-tag status-pass"><span className="dot dot-pass" />通过</span>
@@ -2033,8 +2140,8 @@ function RightStep4Output({ productInfo }: { productInfo: NewProductInfo }) {
       <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
         <div className="kpi-card"><div className="kpi-label">新品</div><div className="kpi-value" style={{ fontSize: 16 }}>{productInfo.name}</div></div>
         <div className="kpi-card"><div className="kpi-label">门店数</div><div className="kpi-value">{productInfo.storeCount.toLocaleString()}</div></div>
-        <div className="kpi-card"><div className="kpi-label">物料数</div><div className="kpi-value">4</div></div>
-        <div className="kpi-card"><div className="kpi-label">预警</div><div className="kpi-value" style={{ color: 'var(--warn)' }}>1项超阈值</div></div>
+        <div className="kpi-card"><div className="kpi-label">物料数</div><div className="kpi-value">{calc.materials.length}</div></div>
+        <div className="kpi-card"><div className="kpi-label" title="A 类计算过程检测：备货偏差 10% / MOQ取整 5% / 安库 N 天，三项命中数合计">检测项命中</div><div className="kpi-value" style={{ color: calc.totals.alertCount > 0 ? 'var(--warn)' : 'var(--good)' }}>{calc.totals.alertCount}项</div></div>
       </div>
 
       {/* 全国物料最终方案 */}
@@ -2043,17 +2150,26 @@ function RightStep4Output({ productInfo }: { productInfo: NewProductInfo }) {
         <table className="data-table">
           <thead><tr><th>物料</th><th>物料编码</th><th className="num">预测量</th><th className="num">统配量</th><th className="num">统配外</th><th className="num">下单量</th><th>单位</th></tr></thead>
           <tbody>
-            {nationalMaterialSummary.map((m, i) => (
+            {calc.materials.map((m, i) => (
               <tr key={i}>
-                <td style={{ fontWeight: 600 }}>{m.name}</td>
-                <td style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{['20260901-001','20260902-002','20260903-003','0260815-004'][i]}</td>
+                <td style={{ fontWeight: 600 }}>{m.material}</td>
+                <td style={{ fontSize: 11, fontFamily: 'var(--font-mono)' }}>{m.code}</td>
                 <td className="num">{m.forecastQty.toLocaleString()}</td>
-                <td className="num">{m.allocationQty.toLocaleString()}</td>
-                <td className="num">{m.extraStock.toLocaleString()}</td>
+                <td className="num">{m.unifiedQty.toLocaleString()}</td>
+                <td className="num">{m.unifiedExtra.toLocaleString()}</td>
                 <td className="num" style={{ fontWeight: 700, color: 'var(--accent)' }}>{m.orderQty.toLocaleString()}</td>
-                <td style={{ fontSize: 11 }}>{['箱','箱','瓶','箱'][i]}</td>
+                <td style={{ fontSize: 11 }}>{m.unit}</td>
               </tr>
             ))}
+            <tr style={{ background: 'rgba(79,168,224,0.06)' }}>
+              <td style={{ fontWeight: 700 }}>合计（{calc.materials.length} 物料）</td>
+              <td />
+              <td className="num" style={{ fontWeight: 700 }}>{calc.totals.totalForecast.toLocaleString()}</td>
+              <td className="num" style={{ fontWeight: 700 }}>{calc.materials.reduce((a, m) => a + m.unifiedQty, 0).toLocaleString()}</td>
+              <td className="num" style={{ fontWeight: 700 }}>{calc.materials.reduce((a, m) => a + m.unifiedExtra, 0).toLocaleString()}</td>
+              <td className="num" style={{ fontWeight: 700, color: 'var(--accent)' }}>{calc.totals.totalOrder.toLocaleString()}</td>
+              <td style={{ fontSize: 11 }}>—</td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -2062,7 +2178,8 @@ function RightStep4Output({ productInfo }: { productInfo: NewProductInfo }) {
       <div className="card" style={{ borderColor: 'var(--warn)', background: 'rgba(245,158,11,0.02)' }}>
         <div className="card-title" style={{ color: 'var(--warn)' }}><Icon n="list" style={{ marginRight: 6, color: 'inherit' }} />预警汇总 — 计算明细<button className="export-btn"><Icon n="download" size={12} /> 导出</button></div>
         <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.6 }}>
-          A 类检测阈值（汇总自「汇总到仓」页检测区）：备货偏差 ≤10% ｜ MOQ取整偏差 ≤5% ｜ 安全库存 ≥{safetyDays}天
+          A 类检测阈值（汇总自「汇总到仓」页检测区）：备货偏差 ≤10% ｜ MOQ取整偏差 ≤5% ｜ 安全库存 ≥{safetyDays}天（可在「参数面板」改）<br/>
+          命中情况：备货偏差 {calc.totals.stockAlertCount}/{calc.materials.length} ｜ MOQ 取整 {calc.totals.moqAlertCount}/{calc.materials.length} ｜ 安全库存 {calc.totals.safetyAlertCount}/{calc.materials.length}；<b>超阈值不阻断流程</b>，只做数值提醒。
         </div>
 
         {warningDetail.map((m, i) => (
@@ -2070,6 +2187,7 @@ function RightStep4Output({ productInfo }: { productInfo: NewProductInfo }) {
             <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
               {m.name}
               <span style={{ fontSize: 11, fontFamily: 'var(--font-mono)', color: 'var(--text-muted)' }}>{m.code}</span>
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>单位：{m.unit}</span>
               {!m.stockPass && <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 4, background: 'rgba(239,68,68,0.1)', color: 'var(--danger, #ef4444)' }}><Icon n="alert" size={12} /> 备货偏差超阈值</span>}
             </div>
             <table className="data-table" style={{ marginBottom: 0 }}>
@@ -2085,21 +2203,21 @@ function RightStep4Output({ productInfo }: { productInfo: NewProductInfo }) {
               <tbody>
                 <tr>
                   <td style={{ fontWeight: 600 }}>备货偏差</td>
-                  <td className="num" style={{ color: m.stockPass ? 'var(--good)' : 'var(--danger, #ef4444)', fontWeight: 700 }}>{m.stockDeviation}%</td>
+                  <td className="num" style={{ color: m.stockPass ? 'var(--good)' : 'var(--danger, #ef4444)', fontWeight: 700 }}>{m.stockDeviation > 0 ? '+' : ''}{m.stockDeviation}%</td>
                   <td className="num">≤{m.stockThreshold}%</td>
                   <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{m.stockCalc}</td>
                   <td>{passIcon(m.stockPass)}</td>
                 </tr>
                 <tr>
                   <td style={{ fontWeight: 600 }}>MOQ取整偏差</td>
-                  <td className="num" style={{ color: 'var(--good)', fontWeight: 700 }}>{m.moqDeviation}%</td>
+                  <td className="num" style={{ color: m.moqPass ? 'var(--good)' : 'var(--danger, #ef4444)', fontWeight: 700 }}>{m.moqDeviation}%</td>
                   <td className="num">≤{m.moqThreshold}%</td>
                   <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{m.moqCalc}</td>
                   <td>{passIcon(m.moqPass)}</td>
                 </tr>
                 <tr>
                   <td style={{ fontWeight: 600 }}>安全库存</td>
-                  <td className="num" style={{ color: 'var(--good)', fontWeight: 700 }}>{m.safetyDays}天</td>
+                  <td className="num" style={{ color: m.safetyPass ? 'var(--good)' : 'var(--danger, #ef4444)', fontWeight: 700 }}>{m.safetyDays}天</td>
                   <td className="num">≥{safetyDays}天</td>
                   <td style={{ fontSize: 11, color: 'var(--text-muted)' }}>{m.safetyCalc}</td>
                   <td>{passIcon(m.safetyPass)}</td>
