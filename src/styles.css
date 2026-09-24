@@ -707,9 +707,19 @@ body {
   background: var(--accent-light);
 }
 
-.skill-popup-icon {
-  font-size: 18px;
+/* 技能弹层条目内部：对齐朱仙 V4.3 的 .hp-skill-ico / -name / -desc / -go
+   （她弹层条目＝彩色单字块 + 名称 + 描述 + 右侧 ›；色值由 App.tsx 的 SKILLS.tileBg/tileFg 内联给出）
+   别改回「只有 SVG 图标」—— 她那边是单字块，样式要一致 */
+.skill-popup-ico {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  font-size: 15px;
+  font-weight: 800;
 }
 
 .skill-popup-info {
@@ -726,7 +736,13 @@ body {
 .skill-popup-desc {
   font-size: 11px;
   color: var(--text-faint);
-  margin-top: 1px;
+  margin-top: 2px;
+}
+
+.skill-popup-go {
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 15px;
 }
 
 /* ===== Right Panel (Data Display Only) ===== */

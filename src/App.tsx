@@ -21,10 +21,13 @@ const RIGHT_TABS: Array<{ step: Step; label: string; icon?: string; always?: boo
 ];
 
 const SKILLS = [
-  { id: 'newproduct', name: '新品分仓备货', icon: 'box', desc: '新品从录入到备货方案全流程' },
-  { id: 'query', name: '智能问数', icon: 'chart', desc: '自然语言查询供应链数据' },
-  { id: 'stockout', name: '缺货归因', icon: 'alert', desc: '缺货原因分析与补货建议' },
-  { id: 'forecast', name: '销量预测', icon: 'trend', desc: '基于历史数据的销量预测' },
+  // tile / tileBg / tileFg：对齐朱仙 V4.3 技能弹层的 .hp-skill-ico 规范（34×34 圆角 10 的彩色单字块）。
+  // 「新品分仓备货」「缺货归因」两项与她那边同一技能，**色值逐字照抄她的**（#dcfce7/#15803d、#fee2e2/#b91c1c）；
+  // 另外两个按她同一套「浅底 + 深字」规则补（蓝/琥珀），不要改成 emoji 或只留 SVG 图标。
+  { id: 'newproduct', name: '新品分仓备货', icon: 'box', desc: '新品从录入到备货方案全流程', tile: '新', tileBg: '#dcfce7', tileFg: '#15803d' },
+  { id: 'query', name: '智能问数', icon: 'chart', desc: '自然语言查询供应链数据', tile: '数', tileBg: '#dbeafe', tileFg: '#1d4ed8' },
+  { id: 'stockout', name: '缺货归因', icon: 'alert', desc: '缺货原因分析与补货建议', tile: '缺', tileBg: '#fee2e2', tileFg: '#b91c1c' },
+  { id: 'forecast', name: '销量预测', icon: 'trend', desc: '基于历史数据的销量预测', tile: '测', tileBg: '#fef3c7', tileFg: '#b45309' },
 ];
 
 type Step = 0 | 1 | 2 | 3 | 4 | 5;
@@ -751,11 +754,12 @@ function App() {
                 {SKILLS.map(skill => (
                   <div key={skill.id} className={`skill-popup-item ${activeSkill.id === skill.id ? 'active' : ''}`}
                     onClick={() => handleSkillSelect(skill)}>
-                    <span className="skill-popup-icon"><Icon n={skill.icon} size={16} /></span>
+                    <span className="skill-popup-ico" style={{ background: skill.tileBg, color: skill.tileFg }}>{skill.tile}</span>
                     <div className="skill-popup-info">
                       <div className="skill-popup-name">{skill.name}</div>
                       <div className="skill-popup-desc">{skill.desc}</div>
                     </div>
+                    <span className="skill-popup-go">›</span>
                   </div>
                 ))}
               </div>
