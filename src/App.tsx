@@ -538,7 +538,7 @@ function App() {
           <span className="logo-sub">AI CEO</span>
         </div>
         <div className="header-center">
-          <span className="header-breadcrumb">智能洞察</span>
+          <span className="header-breadcrumb">经营首页</span>
           <span className="header-sep">/</span>
           <span className="header-current">{activeSkill.name}</span>
         </div>
