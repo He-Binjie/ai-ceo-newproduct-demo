@@ -55,7 +55,11 @@ body {
 html[data-skill='wenshu'] #np-root .main-content {
   display: none;
 }
-html[data-skill='wenshu'] .header-center {
+/* ⚠️ 必须带 `#np-root`（P6 实测踩到）——P5 给我们每条规则都加了 ID 前缀，特异性升到 (1,x,0)；
+   原来这条写成 `html[data-skill='wenshu'] .header-center`（0,2,1）就被 `#np-root .header-center{display:flex}`
+   （1,1,0）反压 ⇒ 问数模式下我们的面包屑没藏掉，header 里同时出现两条面包屑。
+   同批 6 条技能态覆盖里只有这条漏了 ID，其它 5 条都写了。判定规则见 scripts/check-scope-np-root.mjs 的 skill_override_without_id。 */
+html[data-skill='wenshu'] #np-root .header-center {
   display: none; /* 顶栏面包屑改由她的 #bcCur 提供，避免两条面包屑 */
 }
 html[data-skill='wenshu'] #wenshu-root {

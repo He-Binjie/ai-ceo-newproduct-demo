@@ -10,7 +10,7 @@
  *   · 白名单里少了一条 = 只是清单过期（提示，不阻断）
  * 断言：① 无白名单之外的未作用域选择器 ② 关键选择器确实带前缀 ③ 没有裸 html/body（除豁免重置）
  *      ④ @keyframes 步进没被前缀 ⑤ :root 没被前缀（=2 条：styles.css 令牌 + shell 的 --shell-header-h）
- *      ⑥ postcss.parse 不抛 ⇒ 花括号配平
+ *      ⑥ postcss.parse 不抛 ⇒ 花括号配平 ⑦ data-skill 门控的技能态覆盖选择器尾部必须带 ID（P6 新增）
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -29,7 +29,7 @@ const STANDALONE_WHITELIST = [
   'html[data-skill=wenshu] #wenshu-header-center',
   'html[data-skill=wenshu] #wenshu-header-right',
   'html[data-skill=wenshu] #wenshu-root',
-  'html[data-skill=wenshu] .header-center',
+  'html[data-skill=wenshu] #np-root .header-center',
   '#wenshu-header-center',
   '#wenshu-header-right',
   '#wenshu-root',
@@ -72,6 +72,14 @@ const allowed = norm(STANDALONE_WHITELIST)
 const leaked = found.filter((s) => !allowed.includes(s))
 const staleWhitelist = allowed.filter((s) => !found.includes(s))
 
+/* 技能态覆盖的特异性闸门（P6 新增，防 P5 特异性回退再现）
+ * P5 之后 styles.css 里每条规则都带一个 ID（#np-root）⇒ 特异性升到 (1,x,0)。
+ * 技能态覆盖若还写成 `html[data-skill=wenshu] .foo`（0,2,1），会被 `#np-root .foo`（1,1,0）反压。
+ * 2026-09-23 实测：`.header-center` 就这样失效 → 问数模式下我们那条面包屑没被藏掉。
+ * 规则：凡 `html[data-skill=…]` 门控的覆盖选择器，尾部（属性选择器之后）必须含 ID。 */
+const skillOverrides = found.filter((s) => /^html\[data-skill/.test(s))
+const skillOverrideNoId = skillOverrides.filter((s) => !/#/.test(s.replace(/^html\[data-skill=[^\]]*\]/, '')))
+
 const out = {
   file: path.basename(file),
   bytes: Buffer.byteLength(css),
@@ -81,6 +89,8 @@ const out = {
   standalone_selectors_found: found,
   leaked_outside_whitelist: leaked,
   stale_whitelist_entries: staleWhitelist,
+  skill_overrides: skillOverrides.length,
+  skill_override_without_id: skillOverrideNoId,
   missing_scope_probe: missScope,
   prefixed_keyframe_step: /#np-root (0%|100%|from|to)\b/.test(css),
   prefixed_root: /#np-root :root|#np-root:root/.test(css),
@@ -88,6 +98,7 @@ const out = {
 out.PASS =
   out.leaked_outside_whitelist.length === 0 &&
   out.missing_scope_probe.length === 0 &&
+  out.skill_override_without_id.length === 0 &&
   !out.prefixed_keyframe_step &&
   !out.prefixed_root &&
   out.global_root_kept === 2 &&
