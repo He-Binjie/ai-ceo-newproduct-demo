@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-24T10:12:26.105Z",
+  "generatedAt": "2026-09-24T12:41:56.508Z",
   "source": {
     "file": "src/skills/wenshu/demo.v4.3-0921.raw.html",
     "chars": 1654864,
@@ -105,7 +105,8 @@
       "src/index.css",
       "src/App.css",
       "src/wenshu-shell.css",
-      "index.html"
+      "index.html",
+      "public/wenshu/np-monitor.js"
     ],
     "collisions": []
   },

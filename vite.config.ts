@@ -55,14 +55,18 @@ function wenshuShell(): Plugin {
         }
         // 她的 CSS 用 <link>（不进 Vite 的 CSS 管线，避免被我们的 PostCSS 作用域插件再处理一遍）
         // 她的 JS 用 <script defer>（classic，非 module：她的代码依赖 window 全局，见 209 处 onclick）
-        // 依赖顺序 = vendor（echarts/xlsx）→ wenshu.js → shell-bridge.js；都是 defer ⇒ 按文档顺序执行
+        // 依赖顺序 = vendor（echarts/xlsx）→ wenshu.js → shell-bridge.js → np-monitor.js；都是 defer ⇒ 按文档顺序执行
+        // 数据岛 <script type="application/json" id="np-monitor-seed"> 由 src/main.tsx 在模块求值时同步写入
+        //   （不在这里构建期生成：tsconfig.node.json 是 module=nodenext，从本文件 import app 侧 mock.ts 会连带
+        //    把 mock.ts 拉进 nodenext 项目 → 它里面无后缀的 `from '../types'` 直接 TS2835。详见 src/engine/monitorSeed.ts）
         return html
           .replace('</head>', `    <link rel="stylesheet" href="${url('wenshu/wenshu.css')}" />\n  </head>`)
           .replace(
             '</body>',
             `${markup}${header}${vendor}\n` +
               `    <script src="${url('wenshu/wenshu.js')}" defer></script>\n` +
-              `    <script src="${url('wenshu/shell-bridge.js')}" defer></script>\n  </body>`,
+              `    <script src="${url('wenshu/shell-bridge.js')}" defer></script>\n` +
+              `    <script src="${url('wenshu/np-monitor.js')}" defer></script>\n  </body>`,
           )
       },
     },

@@ -504,7 +504,8 @@ for (const m of jsSource.matchAll(/document\.querySelector(?:All)?\(\s*['"]([^'"
   const classes = [...sel.matchAll(/\.([A-Za-z0-9_-]+)/g)].map((c) => c[1])
   if (classes.length) herClassQueries.push({ sel, classes })
 }
-const HOST_FILES = ['src/App.tsx', 'src/styles.css', 'src/index.css', 'src/App.css', 'src/wenshu-shell.css', 'index.html']
+// 2026-09-24 新增 np-monitor.js：本仓自建的「新品监控」看板脚本（宿主侧，走 BD.extra 正路挂进她的看板清单）
+const HOST_FILES = ['src/App.tsx', 'src/styles.css', 'src/index.css', 'src/App.css', 'src/wenshu-shell.css', 'index.html', 'public/wenshu/np-monitor.js']
 const hostPath = (f) => path.join(ROOT, f)
 const stripComments = (s) => s.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|\s)\/\/[^\n]*/g, '$1 ')
 const hostFiles = HOST_FILES.filter((f) => fs.existsSync(hostPath(f)))
