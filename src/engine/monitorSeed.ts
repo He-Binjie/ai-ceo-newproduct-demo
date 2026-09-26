@@ -20,50 +20,57 @@ import { monitorSubWarehouses } from '../data/mock'
  *   <script type="module" src="/src/main.tsx"> 都是 defer，**按文档顺序执行**，main.tsx 在前
  *   ⇒ 模块求值时就写好数据岛，np-monitor.js 执行时一定读得到。
  *
- * 2026-09-24 改版：
- *   ① 看板收敛成「一个大宽表」（彬节：删掉 KPI 卡与趋势图、仓库按茶姬真实清单铺开）
- *   ② 粒度改为**二级仓 × 核心物料**（彬节：「要按照二级仓的数据展示，二级仓的数量应该够多，
- *      每一种物料都有很多个二级仓，核心物料大概四五种」）→ 数据岛 = 120 行
- *      （5 种物料 × 24 个一级仓下的二级仓），不再带 30 天趋势。
+ * 2026-09-26 改版（彬节）：
+ *   ① 粒度由「二级仓 × 核心物料（120 行）」收敛为**二级仓库一行**（65 行）——
+ *      一级仓库 / 二级仓库 换成茶姬 SCM 仓主数据（她报表「一级仓库名称 + 二级仓库名称」同一口径）
+ *   ② 指标名与口径严格对齐 PRD V7.8 §5.4 六项监控指标（①②③④⑤⑥），不再用「备货预测量 / 实际消耗」
+ *      这类自造列名；PRD 六项里 4 项是仓维度定义，故按仓一行。
  */
 
 const row = (w: MonitorSubWhRow) => ({
+  /** 一级仓库名称 */
   wh1: w.wh1,
+  /** 二级仓库名称 */
   wh2: w.wh2,
-  sub: w.subsidiary,
-  /** 合并品名 */
-  mat: w.material,
-  unit: w.unit,
+  /** 覆盖门店 */
   stores: w.coversStores,
-  /** 备货预测量（该二级仓该物料） */
-  fc: w.forecastQty,
-  /** 实际消耗 */
-  ac: w.actualQty,
+  /** ① 仓备货预测日均杯量 */
+  fcavg: w.forecastCupsDaily,
+  /** ② 仓实际日均杯量 */
+  acavg: w.actualCupsDaily,
+  /** ③ 仓偏差率（%） */
   dev: w.deviationPct,
-  /** 仓库可售天数 */
+  /** ④ 近 7 日销售趋势（环比 %） */
+  trend: w.trendPct,
+  /** ⑤ 仓库可售天数 */
   whd: w.sellableDays,
+  /** ⑥ 仓预计门店可售天数（仅展示、不监控） */
+  stdays: w.estStoreSellableDays,
 })
 
 export interface MonitorSeed {
   source: string
-  /** 口径说明（渲染在看板脚注里，避免「数据哪来的」被追问） */
+  /** 口径说明（看板侧读它做 console 自检；页面上不再渲染解释文字） */
   note: {
-    materials: string[]
-    subWarehouses: number
+    /** 一级仓库个数 */
     primaryWarehouses: number
+    /** 二级仓库个数 */
+    subWarehouses: number
     rows: number
+    /** 覆盖门店合计（口径自检用：应 = 7,188） */
+    stores: number
   }
   rows: Array<ReturnType<typeof row>>
 }
 
 export function buildMonitorSeed(): MonitorSeed {
   return {
-    source: 'src/data/mock.ts · monitorSubWarehouses（二级仓 × 核心物料）',
+    source: 'src/data/mock.ts · monitorSubWarehouses（茶姬 SCM 仓主数据：二级仓库 × PRD §5.4 六项监控指标）',
     note: {
-      materials: Array.from(new Set(monitorSubWarehouses.map(r => r.material))),
-      subWarehouses: Array.from(new Set(monitorSubWarehouses.map(r => r.wh2))).length,
       primaryWarehouses: Array.from(new Set(monitorSubWarehouses.map(r => r.wh1))).length,
+      subWarehouses: Array.from(new Set(monitorSubWarehouses.map(r => r.wh2))).length,
       rows: monitorSubWarehouses.length,
+      stores: monitorSubWarehouses.reduce((a, r) => a + r.coversStores, 0),
     },
     rows: monitorSubWarehouses.map(row),
   }
