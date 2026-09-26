@@ -1,5 +1,5 @@
 // 向磊飞书多维表格模板数据（V4 - 9/9会议修正：多品+预警+统配仓级视图）
-import type { BOMRecord, NewProductInfo, RegionCoefficient, StoreForecast, UnifiedDistribution, WarehouseDistributionCompare, MonitorSubWhRow, ParamItem } from '../types';
+import type { BOMRecord, NewProductInfo, RegionCoefficient, StoreForecast, UnifiedDistribution, WarehouseDistributionCompare, MonitorSalesRow, MonitorStockRow, ParamItem } from '../types';
 
 // ===== 新品列表（Step 0 选择用） =====
 export const newProductList = [
@@ -540,26 +540,22 @@ export const supplierRoot: Array<{ merged: string; rows: Array<[string, number]>
 ];
 
 // ================= V7.6 新增（9/22 罗雄会议）：监控看板 =================
-// ⚠️ 本段全部为**演示态数据（mock）**，不是真实取数结果
-
-/* 「新品监控」看板底表 —— **二级仓库维度**（2026-09-26 彬节口径：一级仓 / 二级仓改用茶姬真实仓主数据）
- *
- * 仓清单来源：茶姬 SCM 仓主数据导出《茶姬一级仓-二级仓数据.xlsx》（87 行「一级仓库 + 二级仓库」成对）
- *   ① 按二级仓库去重：同一二级仓在多行出现时，一级仓库取「非自身」的父仓；只有自映射时取自身 → 76 个
- *   ② 剔除名称带「（停用）」的仓 → **65 个在用二级仓 / 44 个一级仓**
- *   口径与她报表里的「一级仓库名称 + 二级仓库名称」成对口径一致（见 demo.v4.3 RPT_Q 的 rpt-wlxs / bd-inv）。
- *
- * 数字口径（PRD V7.8 §5.4 六项监控指标；全部确定性，仓名 hash 作种子，不用随机数）：
- *   ① 仓备货预测日均杯量 = 覆盖门店 × 单店首周日均新品杯量
- *      （大盘首周日均 FIRST_WEEK=609 杯 × 第 1 周新品杯占比 5.0% = 30.45；＝ PRD「仓维度上新预测总量 ÷ 28」的日均形态）
- *   ② 仓实际日均杯量 = ① × (1 + 偏差率)（PRD 为「仓饮品销量 ÷ 售卖天数 N」，默认 7 天、不含当日）
- *   ③ 仓偏差率 = ±28% 内幂律分布（多数在 ±5% 内、约 10% 超 20% 触发销量偏差预警）
- *   ④ 近 7 日销售趋势 = PRD 的 30 天销售占比趋势在大宽表里的近 7 日环比形态
- *   ⑤ 仓库可售天数 = 仓库可用库存 ÷ 仓物料订货日均（订货天数 N=7）；< 7 天触发库存预警
- *   ⑥ 仓预计门店可售天数 = (仓库可用库存 + 门店库存 + 门店在途) ÷ 门店成品物料销量（仅展示、不监控）
- *   ⚠️ 覆盖门店 = 按城市门店规模手写摊分到全国 7,188（Σ = 7,188，构建期自检）—— 演示态，真实「仓 ← 门店」归属要等门店主数据。
- *   ⚠️ 上新期监控值要等上新后 T+1 ~ T+28 才有真实出数，以上均为演示态。
- */
+// ⚠️ 本段全部为**演示态数据（mock）**，不是真实取数结果，也不是业务定稿值
+//
+// 口径来源：茶姬 PRD《新品分仓备货 产品需求文档》§5.4「五、数据表结构」（V7.9）
+//   6 项监控指标分属两个行粒度 ⇒ **两张事实表**（不再是一张二级仓宽表）：
+//     表 A · 新品销售监控表（仓 × 新品）= ①②③④ + 状态   ← monitorSalesRows（65 仓 × 2 新品 = 130 行）
+//     表 B · 物料库存监控表（仓 × 物料）= ⑤⑥   + 状态   ← monitorStockRows（65 仓 × 5 物料 = 325 行）
+//   一级仓仅作分组展示维度、不参与计算；禁止跨粒度聚合（表 B 不按新品上卷）。
+//
+// 仓清单来源：茶姬 SCM 仓主数据导出《茶姬一级仓-二级仓数据.xlsx》（87 行「一级仓库 + 二级仓库」成对）
+//   ① 按二级仓库去重：同一二级仓在多行出现时，一级仓库取「非自身」的父仓；只有自映射时取自身 → 76 个
+//   ② 剔除名称带「（停用）」的仓 → **65 个在用二级仓 / 44 个一级仓**（沿用上轮，未回退自造仓名）
+//   口径与她报表里的「一级仓库名称 + 二级仓库名称」成对口径一致（见 demo.v4.3 RPT_Q 的 rpt-wlxs / bd-inv）。
+//
+// 数值口径：全部**确定性**（FNV-1a 仓名 hash 作种子，不用 Math.random，构建可复现）。
+//   ⚠️ 覆盖门店 = 按城市门店规模手写摊分到全国 7,188（Σ = 7,188，构建期自检）—— 演示态。
+//   ⚠️ 上新期监控值要等上新后 T+1 ~ T+28 才有真实出数；本页所有数字均为演示态。
 const MONITOR_WH_PAIRS: Array<[string, string]> = [
   /* [一级仓库名称, 二级仓库名称] —— 父仓 → 二级仓（自映射＝该仓自身即二级仓） */
   ['成都仓', '兰州二级仓'],
@@ -710,10 +706,8 @@ if (MONITOR_WH_PAIRS.reduce((a, [, wh2]) => a + (MONITOR_STORES_BY_WH2[wh2] || 0
 if (MONITOR_WH_PAIRS.some(([, wh2]) => MONITOR_STORES_BY_WH2[wh2] == null)) {
   throw new Error('monitor: 有二级仓没有覆盖门店数（MONITOR_STORES_BY_WH2 缺项）');
 }
-/** 单店首周日均新品杯量 = 大盘预测首周日均 609 杯 × 第 1 周新品杯占比 5.0% */
-const MONITOR_NEW_CUPS_PER_STORE = FIRST_WEEK * 0.05; // = 30.45
 
-/** FNV-1a：仓名 hash → [0,1)，用作确定性「伪随机」种子（不用 Math.random，构建可复现） */
+/* FNV-1a：仓名 hash → [0,1)，用作确定性「伪随机」种子（不用 Math.random，构建可复现） */
 function monitorHash(s: string): number {
   let h = 2166136261;
   for (let i = 0; i < s.length; i++) {
@@ -722,44 +716,115 @@ function monitorHash(s: string): number {
   }
   return (h >>> 0) / 4294967296;
 }
-const monitorFrac = (wh: string, salt: string) => monitorHash(wh + '|' + salt);
+const monitorFrac = (key: string, salt: string) => monitorHash(key + '|' + salt);
 const monitorR1 = (v: number) => Math.round(v * 10) / 10;
 
-export const monitorSubWarehouses: MonitorSubWhRow[] = (() => {
-  /* 覆盖门店：直接取手写摊分表（Σ 已自检 = 7,188） */
-  const stores = MONITOR_WH_PAIRS.map(([, wh2]) => MONITOR_STORES_BY_WH2[wh2]);
+/** 行序：按**一级仓库首次出现顺序**分组（一级仓是分组展示列），组内保持仓清单顺序
+ *  —— 这样看板第一列读起来就是一段段的「仓分组」，而不是跳来跳去 */
+const MONITOR_WH_ORDERED: Array<[string, string]> = (() => {
+  const groups: string[] = [];
+  MONITOR_WH_PAIRS.forEach(([wh1]) => {
+    if (!groups.includes(wh1)) groups.push(wh1);
+  });
+  return groups.flatMap(wh1 => MONITOR_WH_PAIRS.filter(([w1]) => w1 === wh1));
+})();
 
-  return MONITOR_WH_PAIRS.map(([wh1, wh2], i) => {
-    /* 单店首周日均新品杯量 ±10%（区域系数 / 门店结构的演示态折算） */
-    const perStore = MONITOR_NEW_CUPS_PER_STORE * (0.9 + monitorFrac(wh2, 'u') * 0.2);
-    const forecastCupsDaily = Math.round(stores[i] * perStore);
-    /* ③ 偏差率：sign(u) × |u|³ × 28% → 多数在 ±5% 内、约 10% 超 20% */
-    const du = monitorFrac(wh2, 'd') * 2 - 1;
-    const deviationPct = monitorR1(du * Math.pow(Math.abs(du), 2) * 28);
-    /* ⑤ 仓库可售天数：(2u−1)³ 集中在 9.6 天左右、尾部落 5.0 ~ 14.2 天 → 少数 <7 天触发库存预警 */
-    const su = monitorFrac(wh2, 's') * 2 - 1;
-    const sellableDays = monitorR1(9.6 + 4.6 * Math.pow(su, 3));
-    /* ⑥ 仓预计门店可售天数 = 仓库可售天数 × (1.25 ~ 2.00)（含门店库存 + 在途） */
-    const estStoreSellableDays = monitorR1(sellableDays * (1.25 + monitorFrac(wh2, 'e') * 0.75));
-    /* ④ 近 7 日销售趋势（环比 %） */
-    const tu = monitorFrac(wh2, 't') * 2 - 1;
-    const trendPct = monitorR1(tu * Math.pow(Math.abs(tu), 2) * 20);
+/* ===== 表 A · 新品销售监控表（仓 × 新品）===== */
+/** 监控范围内的在售新品（同系列多品多选：Step 0 选品口径） */
+const MONITOR_PRODUCTS = [
+  { name: '铁观音莲雾苹果', firstWeekDailyCups: 609 },
+  { name: '铁观音凤梨白月光', firstWeekDailyCups: 580 },
+] as const;
+/** 第 1 周新品杯占比（PRD §4.2.3 W1-W4 周占比：W1 = 5.0%） */
+const MONITOR_W1_CUP_RATIO = 0.05;
 
-    return {
-      wh1,
-      wh2,
-      coversStores: stores[i],
-      forecastCupsDaily,
-      actualCupsDaily: Math.round(forecastCupsDaily * (1 + deviationPct / 100)),
-      deviationPct,
-      trendPct,
-      sellableDays,
-      estStoreSellableDays,
-      isDeviationAlert: Math.abs(deviationPct) > 20,
-      isStockAlert: sellableDays < 7,
-    };
+export const monitorSalesRows: MonitorSalesRow[] = (() => {
+  const rows: MonitorSalesRow[] = [];
+  MONITOR_WH_ORDERED.forEach(([wh1, wh2]) => {
+    const stores = MONITOR_STORES_BY_WH2[wh2];
+    MONITOR_PRODUCTS.forEach((p) => {
+      const key = wh2 + '|' + p.name;
+      /* 单店首周日均新品杯量 ±10%（区域系数 / 门店结构的演示态折算） */
+      const perStore = p.firstWeekDailyCups * MONITOR_W1_CUP_RATIO * (0.9 + monitorFrac(key, 'u') * 0.2);
+      const forecastCupsDaily = Math.round(stores * perStore);
+      /* ③ 偏差率：sign(u) × |u|³ × 28% → 多数在 ±5% 内、约 10% 超 20%（触发销量偏差预警） */
+      const du = monitorFrac(key, 'd') * 2 - 1;
+      const deviationPct = monitorR1(du * Math.pow(Math.abs(du), 2) * 28);
+      /* ④ 近 7 日销售趋势（环比 %） */
+      const tu = monitorFrac(key, 't') * 2 - 1;
+      const trendPct = monitorR1(tu * Math.pow(Math.abs(tu), 2) * 20);
+      rows.push({
+        wh1,
+        wh2,
+        product: p.name,
+        coversStores: stores,
+        forecastCupsDaily,
+        actualCupsDaily: Math.round(forecastCupsDaily * (1 + deviationPct / 100)),
+        deviationPct,
+        nationalActualCupsDaily: 0, // 下方按新品回填（全国维度冗余列）
+        nationalDeviationPct: 0, // 同上
+        trendPct,
+        isDeviationAlert: Math.abs(deviationPct) > 20,
+      });
+    });
+  });
+  /* 全国维度（PRD ③ 仓维度 + 全国维度都做）：按**新品**汇总，回填到该新品的每一行（同表冗余列） */
+  MONITOR_PRODUCTS.forEach((p) => {
+    const sub = rows.filter((r) => r.product === p.name);
+    const fc = sub.reduce((a, r) => a + r.forecastCupsDaily, 0);
+    const ac = sub.reduce((a, r) => a + r.actualCupsDaily, 0);
+    const natDev = monitorR1(((ac - fc) / fc) * 100);
+    sub.forEach((r) => {
+      r.nationalActualCupsDaily = ac;
+      r.nationalDeviationPct = natDev;
+    });
+  });
+  return rows;
+})();
+
+/* ===== 表 B · 物料库存监控表（仓 × 物料）===== */
+/** 需监控的核心物料（合并品名主键）—— 桥表「新品信息表」圈定：与分仓 Step2 的聚合物料同一份来源
+ *  ⚠️ 共用物料（安溪铁观音 / 冷冻生椰乳 两品共用）**只出现一行**，不按新品拆、不打共用标 */
+const MONITOR_MATERIALS: string[] = aggregatedMaterials.map((m) => m.materialName);
+
+export const monitorStockRows: MonitorStockRow[] = (() => {
+  /* 该仓两新品的平均偏差率 → 卖得越多，库存天数越低（两表间的演示态联动，不是真实因果） */
+  const avgDevOf = (wh2: string) => {
+    const sub = monitorSalesRows.filter((r) => r.wh2 === wh2);
+    return sub.reduce((a, r) => a + r.deviationPct, 0) / (sub.length || 1);
+  };
+  return MONITOR_WH_ORDERED.flatMap(([wh1, wh2]) => {
+    const dev = avgDevOf(wh2);
+    return MONITOR_MATERIALS.map((material) => {
+      const key = wh2 + '|' + material;
+      /* ⑤ 仓库可售天数：物料可用库存 ÷ 仓物料订货日均（订货天数 N = 7）
+         (2u−1)³ 集中在 9.6 天左右、尾部落 5.0 ~ 14.2 天 → 少数 <7 天触发库存预警 */
+      const su = monitorFrac(key, 's') * 2 - 1;
+      const base = 9.6 + 4.6 * Math.pow(su, 3);
+      const sellableDays = monitorR1(base / (1 + dev / 100));
+      /* ⑥ 仓预计门店可售天数 = 仓库可售天数 × (1.25 ~ 2.00)（含门店库存 + 在途）；仅展示 */
+      const estStoreSellableDays = monitorR1(sellableDays * (1.25 + monitorFrac(key, 'e') * 0.75));
+      return { wh1, wh2, material, sellableDays, estStoreSellableDays, isStockAlert: sellableDays < 7 };
+    });
   });
 })();
+
+/* 构建期自检：两张表的行数与「共用物料只出现一行」—— 改仓清单 / 新品 / 物料后立刻炸出来 */
+if (MONITOR_WH_ORDERED.length !== MONITOR_WH_PAIRS.length) {
+  throw new Error('monitor: 分组排序后仓行数 ≠ 仓清单行数（分组排序写错了）');
+}
+if (monitorSalesRows.length !== MONITOR_WH_ORDERED.length * MONITOR_PRODUCTS.length) {
+  throw new Error('monitor: 表 A 行数 ≠ 二级仓数 × 新品数');
+}
+if (monitorStockRows.length !== MONITOR_WH_ORDERED.length * MONITOR_MATERIALS.length) {
+  throw new Error('monitor: 表 B 行数 ≠ 二级仓数 × 物料数');
+}
+if (new Set(monitorStockRows.map(r => r.wh2 + '|' + r.material)).size !== monitorStockRows.length) {
+  throw new Error('monitor: 表 B 有重复「仓 × 物料」—— 共用物料不得按新品拆成多行');
+}
+if (MONITOR_MATERIALS.length !== new Set(MONITOR_MATERIALS).size) {
+  throw new Error('monitor: 物料（合并品名）清单有重复主键');
+}
 
 // 参数面板：V7.6 规则 = 所有参数都支持页面直接改；底表里也有的可两处改（底表改 15–20 分钟后生效）；计算以页面当前值为准
 export const paramList: ParamItem[] = [
