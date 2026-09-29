@@ -4,7 +4,9 @@
  * 依据：茶姬 PRD `SU4PwOYWzid2Tsk0xAVccry4nNb`
  *   §4.2.1 应用率 = 一个采购单位（箱）能产出多少杯饮品
  *   §4.7   W1物料量    = 首周日均杯量 × 区域系数 × W1占比 × 7 ÷ 应用率W1 × 备货系数
- *          W2-W4物料量 = 月日均杯量   × 区域系数 × Wn占比 × 7 ÷ 应用率Wn × 备货系数
+ *          W2-W4物料量 = 周日均杯量   × 区域系数 × Wn占比 × 7 ÷ 应用率Wn × 备货系数
+ *          ⚠️ 2026-09-29 罗雄口径：W2/W3/W4 **不套月日均**，用「周日均」单独算
+ *             周日均 = (月总量 − 首周量) ÷ 23 = (月日均×30 − 首周日均×7) ÷ 23
  *          预测总量    = Roundup(W1 + W2 + W3 + W4)
  *   §4.8   效期影响周最小量 = round(7 ÷ 开封效期天数)；Wn < 该值则顶到该值（「一周至少备 1 箱」）
  *   §4.9   仓库物料量 = Σ(该仓覆盖的所有门店的物料量)
@@ -12,7 +14,8 @@
  *   §4.11  理论需求量 = 纯预测杯量 × 用量（不带备货系数、不带区域系数）
  *          备货偏差率 = (当前分仓计算值 − 理论需求量) ÷ 理论需求量，阈值 10%（超阈值不阻断）
  *   §4.12  MOQ取整偏差率 = (Σ各仓下单量 − 当前分仓计算值) ÷ 当前分仓计算值，阈值 5%
- *   §4.15  安库（日均消耗量） = round(仓维度上新预测总量 ÷ 28)；可销售天数 = 统配外 ÷ 日均消耗；< N 天 → 预警
+ *   §4.15  安库（日均消耗量） = round(仓维度上新预测总量 ÷ 30)；可销售天数 = 统配外 ÷ 日均消耗；< N 天 → 预警
+ *          ⚠️ 2026-09-29 拍板：全链路「28 天」统一成「30 天」（算的是一个月）
  *
  * ⚠️ **口径决策（与原 README / 旧 calculator.ts 都不完全一致，需复核）**
  *   - 旧 README 写「÷ 应用率」，旧 `calculator.ts` 实现成「× 应用率 ÷ 1000」——两者必有一错。
@@ -131,6 +134,8 @@ export type StoreRow = {
   salesRatio: number;
   regionCoeff: number;
   isFloorProtected: boolean;
+  /** 门店级下限保护（PRD §4.5：首周/首月日均 < 10 杯 → 取全国大盘值） */
+  isMinProtected: boolean;
   firstWeekDaily: number;
   monthDaily: number;
   materials: StoreMatRow[];
@@ -153,10 +158,14 @@ export type WhMatRow = {
   moq: number;
   /** 下单量 = ceil(合计 ÷ MOQ) × MOQ */
   orderQty: number;
-  /** 安库 = round(仓上新预测总量 ÷ 28) */
+  /** 安库 = round(仓上新预测总量 ÷ 30) */
   avgDailyConsume: number;
-  /** 可销售天数 = 统配外 ÷ 日均消耗 */
+  /** 可销售天数 = 统配外 ÷ 日均消耗（系统口径，用于安全库存校验） */
   sellableDays: number;
+  /** 【公式一】仓预计门店可售天数（基于 BOM：含操作损耗 + 开封效期，逐门店算） */
+  sellableDaysBom: number;
+  /** 【公式二】仓预计门店可售天数（基于货在线出库：销售出库 + 报损出库） */
+  sellableDaysOutbound: number;
   safetyPass: boolean;
 };
 
@@ -168,7 +177,7 @@ export type WhRow = {
   materials: WhMatRow[];
   /** 仓维度上新预测总量（杯，首月＝W1 周 + W2-W4 三周） */
   forecastCups: number;
-  /** 仓备货预测日均杯量 = 预测总量 ÷ 28 */
+  /** 仓备货预测日均杯量 = 预测总量 ÷ 30 */
   forecastDailyCups: number;
 };
 
@@ -292,6 +301,15 @@ function demandFactorsOf(mat: CalcMaterialInput): [number, number, number, numbe
   return mat.demandFactors ?? [1, 1, 1, 1];
 }
 
+/**
+ * W2/W3/W4 用的「周日均」杯量（2026-09-29 罗雄口径）：
+ *   周日均 = (月总量 − 首周量) ÷ 23 = (月日均 × 30 − 首周日均 × 7) ÷ 23
+ * 不再直接套月日均 —— 首月 = 首周 7 天 + 其后 23 天，W2-W4 三周只覆盖后 23 天。
+ */
+export function weeklyDailyOf(firstWeekDaily: number, monthDaily: number): number {
+  return (monthDaily * 30 - firstWeekDaily * 7) / 23;
+}
+
 /** 单店/单仓口径的 W1-W4 物料量（§4.7 + §4.8），返回 [W1,W2,W3,W4] 与效期标记 */
 function weeklyQty(
   firstWeekDaily: number,
@@ -300,11 +318,13 @@ function weeklyQty(
 ): { w: [number, number, number, number]; effMin: number; effLifted: boolean } {
   const app = applicationRateFor(mat);
   const f = demandFactorsOf(mat);
+  /* W2-W4 用「周日均」（(月总量 − 首周量) ÷ 23），不套月日均 —— 见 weeklyDailyOf */
+  const weekDaily = weeklyDailyOf(firstWeekDaily, monthDaily);
   const raw: [number, number, number, number] = [
     (firstWeekDaily * mat.w[0] * 7) / app.w1 * mat.stockCoefficient * f[0],
-    (monthDaily * mat.w[1] * 7) / app.w2 * mat.stockCoefficient * f[1],
-    (monthDaily * mat.w[2] * 7) / app.w3 * mat.stockCoefficient * f[2],
-    (monthDaily * mat.w[3] * 7) / app.w4 * mat.stockCoefficient * f[3],
+    (weekDaily * mat.w[1] * 7) / app.w2 * mat.stockCoefficient * f[1],
+    (weekDaily * mat.w[2] * 7) / app.w3 * mat.stockCoefficient * f[2],
+    (weekDaily * mat.w[3] * 7) / app.w4 * mat.stockCoefficient * f[3],
   ];
   const effMin = weekMinQty(mat.shelfLifeDays);
   const lifted = raw.map(v => (v < effMin ? effMin : v)) as [number, number, number, number];
@@ -318,8 +338,12 @@ export function calcStoreForecasts(p: CalcParams): StoreRow[] {
     const ratio = totalSales > 0 ? s.maySales / totalSales : 0;
     const rawCoeff = p.regions[s.subsidiary] ?? 1;
     const coeff = Math.max(1, rawCoeff); // §4.2.2 下限 1.0（宁多勿缺）
-    const firstWeekDaily = p.product.firstWeekDailyCups * ratio * p.product.storeCount * coeff;
-    const monthDaily = p.product.firstMonthDailyCups * ratio * p.product.storeCount * coeff;
+    let firstWeekDaily = p.product.firstWeekDailyCups * ratio * p.product.storeCount * coeff;
+    let monthDaily = p.product.firstMonthDailyCups * ratio * p.product.storeCount * coeff;
+    /* §4.5 门店级下限保护（PRD 原文）：首周 / 首月日均 < 10 杯 → 取全国大盘值（宁多勿缺） */
+    const isMinProtected = firstWeekDaily < 10 || monthDaily < 10;
+    if (firstWeekDaily < 10) firstWeekDaily = p.product.firstWeekDailyCups;
+    if (monthDaily < 10) monthDaily = p.product.firstMonthDailyCups;
     const materials: StoreMatRow[] = p.materials.map(m => {
       const { w, effMin, effLifted } = weeklyQty(firstWeekDaily, monthDaily, m);
       return {
@@ -340,6 +364,7 @@ export function calcStoreForecasts(p: CalcParams): StoreRow[] {
       salesRatio: ratio,
       regionCoeff: coeff,
       isFloorProtected: rawCoeff < 1,
+      isMinProtected,
       firstWeekDaily,
       monthDaily,
       materials,
@@ -373,8 +398,16 @@ export function calcWarehouseRollup(p: CalcParams): WhRow[] {
       const total = unifiedQty + unifiedExtra;
       const moq = p.moqByMerged[m.merged] ?? 1;
       const orderQty = moq > 1 ? Math.ceil(total / moq) * moq : total;
-      const avgDailyConsume = Math.round(forecastQty / 28); // §4.15 安库
+      const avgDailyConsume = Math.round(forecastQty / 30); // §4.15 安库（30 天口径）
       const sellableDays = avgDailyConsume > 0 ? unifiedExtra / avgDailyConsume : 0;
+      /* 【公式一】仓预计门店可售天数 · 基于 BOM（含操作损耗 + 开封效期，逐门店算）：
+         日均门店消耗（箱/天） = 覆盖门店数 × 单店月物料量 ÷ 30（单店月物料量已含应用率=损失修正 + 效期下限） */
+      const bomDaily = (perStore * wh.storeCount) / 30;
+      const sellableDaysBom = bomDaily > 0 ? total / bomDaily : 0;
+      /* 【公式二】仓预计门店可售天数 · 基于货在线出库（销售出库 + 报损出库）：
+         日均出库（箱/天） = 销售出库 + 报损出库 ≈ 分仓计算值 × (1 + 该物料损耗率) ÷ 30（演示态确定性） */
+      const outboundDaily = Math.max(1, Math.round((forecastQty * (1 + m.lossRate)) / 30));
+      const sellableDaysOutbound = outboundDaily > 0 ? total / outboundDaily : 0;
       return {
         material: m.name,
         merged: mergedOf(m.name),
@@ -388,12 +421,16 @@ export function calcWarehouseRollup(p: CalcParams): WhRow[] {
         orderQty,
         avgDailyConsume,
         sellableDays: Math.round(sellableDays * 10) / 10,
+        sellableDaysBom: Math.round(sellableDaysBom * 10) / 10,
+        sellableDaysOutbound: Math.round(sellableDaysOutbound * 10) / 10,
         safetyPass: sellableDays >= p.safetyStockDays,
       };
     });
 
     // 仓维度上新预测总量（杯）＝ 首周日均×7 + 月日均×7×3（首月四周）
-    const forecastCups = Math.round((firstWeekDaily * 7 + monthDaily * 7 * 3) * wh.storeCount);
+    // ⚠️ W2-W4 用「周日均」（(月总量 − 首周量) ÷ 23），不套月日均
+    const weekDaily = weeklyDailyOf(firstWeekDaily, monthDaily);
+    const forecastCups = Math.round((firstWeekDaily * 7 + weekDaily * 7 * 3) * wh.storeCount);
     return {
       warehouseName: wh.name,
       subsidiary: wh.subsidiary,
@@ -401,7 +438,7 @@ export function calcWarehouseRollup(p: CalcParams): WhRow[] {
       regionCoeff: coeff,
       materials,
       forecastCups,
-      forecastDailyCups: Math.round(forecastCups / 28),
+      forecastDailyCups: Math.round(forecastCups / 30),
     };
   });
 }
@@ -417,11 +454,13 @@ export function calcMaterialSummary(p: CalcParams, whRows: WhRow[]): MatRow[] {
     const app = applicationRateFor(m);
     const f = demandFactorsOf(m);
     // 理论需求量（不带区域系数、不带备货系数）＝ 单店纯用量 × 门店数（含多品聚合折算：共用物料 = 各品之和）
+    // ⚠️ W2-W4 用「周日均」（(月总量 − 首周量) ÷ 23），与仓级 weeklyQty 同口径
+    const weekDailyNat = weeklyDailyOf(p.product.firstWeekDailyCups, p.product.firstMonthDailyCups);
     const perStoreTheory =
       (p.product.firstWeekDailyCups * m.w[0] * 7) / app.w1 * f[0] +
-      (p.product.firstMonthDailyCups * m.w[1] * 7) / app.w2 * f[1] +
-      (p.product.firstMonthDailyCups * m.w[2] * 7) / app.w3 * f[2] +
-      (p.product.firstMonthDailyCups * m.w[3] * 7) / app.w4 * f[3];
+      (weekDailyNat * m.w[1] * 7) / app.w2 * f[1] +
+      (weekDailyNat * m.w[2] * 7) / app.w3 * f[2] +
+      (weekDailyNat * m.w[3] * 7) / app.w4 * f[3];
     const theoreticalQty = Math.round(perStoreTheory * n);
 
     const mats = whRows.map(w => w.materials.find(x => x.material === m.name)!);
@@ -507,11 +546,13 @@ export function computeAll(p: CalcParams, version = 0): CalcResult {
     const wf = demandFactorsOf(worstMat);
     const qtyNoExpire = warehouses.reduce((a, w) => {
       const c = w.regionCoeff;
+      /* W2-W4 用「周日均」（(月总量 − 首周量) ÷ 23），与物料量计算同口径 */
+      const wd = weeklyDailyOf(p.product.firstWeekDailyCups, p.product.firstMonthDailyCups) * c;
       const perStore =
         (p.product.firstWeekDailyCups * c * worstMat.w[0] * 7) / app.w1 * worstMat.stockCoefficient * wf[0] +
-        (p.product.firstMonthDailyCups * c * worstMat.w[1] * 7) / app.w2 * worstMat.stockCoefficient * wf[1] +
-        (p.product.firstMonthDailyCups * c * worstMat.w[2] * 7) / app.w3 * worstMat.stockCoefficient * wf[2] +
-        (p.product.firstMonthDailyCups * c * worstMat.w[3] * 7) / app.w4 * worstMat.stockCoefficient * wf[3];
+        (wd * worstMat.w[1] * 7) / app.w2 * worstMat.stockCoefficient * wf[1] +
+        (wd * worstMat.w[2] * 7) / app.w3 * worstMat.stockCoefficient * wf[2] +
+        (wd * worstMat.w[3] * 7) / app.w4 * worstMat.stockCoefficient * wf[3];
       return a + perStore * w.storeCount;
     }, 0);
     const rQtyNoExpire = Math.round(qtyNoExpire);

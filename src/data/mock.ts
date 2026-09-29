@@ -764,6 +764,7 @@ export const monitorSalesRows: MonitorSalesRow[] = (() => {
         nationalActualCupsDaily: 0, // 下方按新品回填（全国维度冗余列）
         nationalDeviationPct: 0, // 同上
         trendPct,
+        cumTrendPct: 0, // 下方按新品「累加」回填（备货占比趋势·累加）
         isDeviationAlert: Math.abs(deviationPct) > 20,
       });
     });
@@ -774,9 +775,14 @@ export const monitorSalesRows: MonitorSalesRow[] = (() => {
     const fc = sub.reduce((a, r) => a + r.forecastCupsDaily, 0);
     const ac = sub.reduce((a, r) => a + r.actualCupsDaily, 0);
     const natDev = monitorR1(((ac - fc) / fc) * 100);
+    /* ④ 备货占比趋势（累加）：按仓顺序把「近 7 日环比」逐行累加（会议：占比趋势累加看更直观）
+       —— 确定性、可复现；图表形态待开发确认（本轮不出图） */
+    let acc = 0;
     sub.forEach((r) => {
       r.nationalActualCupsDaily = ac;
       r.nationalDeviationPct = natDev;
+      acc += r.trendPct;
+      r.cumTrendPct = monitorR1(acc);
     });
   });
   return rows;

@@ -44,8 +44,10 @@ const salesRow = (r: MonitorSalesRow) => ({
   natacavg: r.nationalActualCupsDaily,
   /** ③ 全国偏差率（冗余列） */
   natdev: r.nationalDeviationPct,
-  /** ④ 近 7 日销售趋势（环比 %） */
+  /** ④ 近 7 日销售趋势（环比 %）＝ 今日近 7 日总量 ÷ 昨日近 7 日总量 − 1 */
   trend: r.trendPct,
+  /** ④ 备货占比趋势（累加） */
+  cumtrend: r.cumTrendPct,
   /** 销量偏差预警：|偏差率| > 20% */
   alert: r.isDeviationAlert,
 })
